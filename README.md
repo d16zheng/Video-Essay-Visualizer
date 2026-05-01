@@ -13,35 +13,40 @@ This version uses Together AI as the LLM provider so the project stays lightweig
 
 ## MVP focus
 
-The current codebase is intentionally centered on step 1 of the product:
+The current codebase is intentionally centered on the first two product steps:
 
 1. Define a stable output schema.
 2. Ask an LLM to produce only that shape.
 3. Validate the response before any UI touches it.
+4. Let a user paste transcript text into a tiny web app and inspect the returned graph.
 
 That gives you a clean contract for the next steps:
 
-- transcript paste UI
-- graph rendering with React Flow or Cytoscape
 - node detail panel with transcript grounding
 - basic user editing
 - save/load projects
+- richer graph rendering with React Flow or Cytoscape
 
 ## What is in this scaffold
 
 ```text
 src/
   cli.ts                         # Run extraction against a local transcript file
-  config.ts                      # Shared constants
   index.ts                       # Public exports
-  prompts/
-    transcript-map.ts            # System and user prompts
-  schema/
-    transcript-map.ts            # Zod schema, types, JSON schema, invariants
-  services/
-    extract-transcript-map.ts    # Together API call + parsing + validation
-  utils/
-    json.ts                      # Defensive JSON parsing helper
+  core/
+    config.ts                    # Shared constants
+    prompts/
+      transcript-map.ts          # System and user prompts
+    schema/
+      transcript-map.ts          # Zod schema, types, JSON schema, invariants
+    services/
+      extract-transcript-map.ts  # Together API call + parsing + validation
+    utils/
+      json.ts                    # Defensive JSON parsing helper
+  server/
+    index.ts                     # Tiny HTTP server for the paste-to-graph flow
+  web/
+    page.ts                      # Inline page HTML, CSS, and browser behavior
 ```
 
 ## Output shape
@@ -175,30 +180,51 @@ For an MVP, this is usually better than over-extracting every possible idea.
 
 ## Recommended next build order
 
-Now that the schema layer exists, I would build the rest in this order:
+Now that the schema layer and smallest browser flow exist, I would build the rest in this order:
 
-1. Transcript paste page in a small web app
-2. Server endpoint that calls `extractTranscriptMap`
-3. First-pass graph renderer with React Flow
-4. Node side panel showing summary plus excerpt
-5. Manual node editing
-6. Save/load projects
-7. Better long-transcript handling with chunking and merge logic
+1. Richer graph renderer with React Flow
+2. Node side panel showing summary plus excerpt
+3. Manual node editing
+4. Save/load projects
+5. Better long-transcript handling with chunking and merge logic
 
 ## Known limitations in this first scaffold
 
 - It assumes a written transcript already exists.
 - It does not yet chunk very long transcripts.
-- It does not yet render a graph in the browser.
+- The browser graph is intentionally minimal and custom-built, not yet a full editor-grade graph UI.
 - It does not yet persist projects.
 - Character offsets are optional because many models are weak at precise span indexing in a single pass.
 
 ## Useful scripts
 
 ```bash
+npm run dev
+npm run serve
 npm run typecheck
 npm run build
 npm run extract -- ./transcript.txt
+```
+
+## Browser flow
+
+The current repo now includes the smallest possible browser loop for step 2:
+
+1. start the local server
+2. paste transcript text into the textarea
+3. submit to `POST /api/transcript-map`
+4. inspect the returned graph layout and raw JSON
+
+Run it with:
+
+```bash
+npm run serve
+```
+
+Then open:
+
+```text
+http://127.0.0.1:3000
 ```
 
 ## Sources used for the Together integration

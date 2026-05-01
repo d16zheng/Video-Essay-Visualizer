@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { extractTranscriptMap } from "./services/extract-transcript-map.js";
+import { extractTranscriptMap } from "./core/services/extract-transcript-map.js";
 
 async function main(): Promise<void> {
   const transcriptPath = process.argv[2];

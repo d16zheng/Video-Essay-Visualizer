@@ -6,6 +6,9 @@
   "description": "Schema-first MVP for turning written transcripts into structured story graphs.",
   "scripts": {
     "build": "tsc --project tsconfig.json",
+    "dev": "tsx --watch src/server/index.ts",
+    "serve": "npm run build && node dist/server/index.js",
+    "start": "node dist/server/index.js",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "extract": "tsx src/cli.ts"
   },
