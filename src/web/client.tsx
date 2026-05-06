@@ -58,6 +58,13 @@ type TreeBranch = {
   children: TreeBranch[];
 };
 
+type NodePositionOverride = {
+  x: number;
+  y: number;
+};
+
+type NodePositionOverrides = Record<string, NodePositionOverride>;
+
 const starterTranscript = `Section 1: Why creativity often feels blocked.
 Most people think they lack ideas, but the real problem is usually fear of producing bad work. The first claim is that perfectionism shuts down experimentation before it starts. One example is the student who waits for inspiration instead of drafting early. Evidence for this comes from repeated creative routines: people who make something daily generate more usable ideas over time.
 
@@ -94,11 +101,78 @@ function edgeColor(relationship: TranscriptMapEdgeRelationship | "helper"): stri
   return edgePalette[relationship];
 }
 
+function getEditableNodeTypes(node: TranscriptMapNode, thesisNodeId: string): TranscriptMapNodeType[] {
+  if (node.id === thesisNodeId) {
+    return ["thesis"];
+  }
+
+  return ["claim", "evidence", "example", "counterpoint", "conclusion"];
+}
+
 function isClaimLinked(edge: TranscriptMapEdge, claimId: string, nodeId: string): boolean {
   return (
     (edge.source === claimId && edge.target === nodeId) ||
     (edge.source === nodeId && edge.target === claimId)
   );
+}
+
+function resolveSelectedNode(map: TranscriptMap, selectedNodeId: string | null): TranscriptMapNode | null {
+  return (
+    map.nodes.find((node) => node.id === selectedNodeId) ??
+    map.nodes.find((node) => node.id === map.thesisNodeId) ??
+    map.nodes[0] ??
+    null
+  );
+}
+
+function updateNodeInMap(
+  map: TranscriptMap,
+  nodeId: string,
+  updater: (node: TranscriptMapNode) => TranscriptMapNode
+): TranscriptMap {
+  return {
+    ...map,
+    nodes: map.nodes.map((node) => (node.id === nodeId ? updater(node) : node))
+  };
+}
+
+function deleteNodeFromMap(map: TranscriptMap, nodeId: string): TranscriptMap {
+  if (nodeId === map.thesisNodeId) {
+    return map;
+  }
+
+  return {
+    ...map,
+    nodes: map.nodes.filter((node) => node.id !== nodeId),
+    edges: map.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
+    sections: map.sections.map((section) => ({
+      ...section,
+      nodeIds: section.nodeIds.filter((sectionNodeId) => sectionNodeId !== nodeId)
+    }))
+  };
+}
+
+function applyNodePositionOverrides(
+  graph: MindMapGraph,
+  positionOverrides: NodePositionOverrides
+): MindMapGraph {
+  return {
+    nodes: graph.nodes.map((node) => {
+      if (node.data.kind !== "content") {
+        return {
+          ...node,
+          draggable: false
+        };
+      }
+
+      return {
+        ...node,
+        position: positionOverrides[node.id] ?? node.position,
+        draggable: true
+      };
+    }),
+    edges: graph.edges
+  };
 }
 
 function buildSectionBranch(
@@ -421,18 +495,28 @@ function buildNodeLabel(data: MindMapData): React.JSX.Element {
 }
 
 function TranscriptEvidencePanel({
-  node
+  node,
+  thesisNodeId,
+  onRenameNode,
+  onUpdateSummary,
+  onUpdateType,
+  onDeleteNode
 }: {
   node: TranscriptMapNode | null;
+  thesisNodeId: string;
+  onRenameNode: (value: string) => void;
+  onUpdateSummary: (value: string) => void;
+  onUpdateType: (value: TranscriptMapNodeType) => void;
+  onDeleteNode: () => void;
 }): React.JSX.Element {
   if (!node) {
     return (
       <aside className="evidence-panel evidence-panel--empty">
-        <p className="panel-kicker">Transcript evidence</p>
+        <p className="panel-kicker">Node editor</p>
         <h3>Select a node</h3>
         <p>
           Click any thesis, claim, evidence, example, counterpoint, or conclusion node to inspect
-          its grounding in the transcript.
+          its evidence and make local corrections.
         </p>
       </aside>
     );
@@ -441,20 +525,72 @@ function TranscriptEvidencePanel({
   const hasCharRange =
     typeof node.transcriptSpan.startChar === "number" &&
     typeof node.transcriptSpan.endChar === "number";
+  const editableTypes = getEditableNodeTypes(node, thesisNodeId);
+  const canDelete = node.id !== thesisNodeId;
 
   return (
     <aside className="evidence-panel">
-      <p className="panel-kicker">Transcript evidence</p>
-      <h3>{node.label}</h3>
+      <div className="panel-head">
+        <p className="panel-kicker">Node editor</p>
+        <h3>{node.label}</h3>
+        <p className="editor-note">
+          Rename, rewrite, retype, delete, or drag this node. These edits only affect the current
+          local browser session.
+        </p>
+      </div>
+
+      <label className="editor-field">
+        <span>Node label</span>
+        <input
+          className="field-input"
+          type="text"
+          value={node.label}
+          onChange={(event) => {
+            onRenameNode(event.target.value);
+          }}
+        />
+      </label>
+
+      <label className="editor-field">
+        <span>Node summary</span>
+        <textarea
+          className="field-input editor-textarea"
+          value={node.summary}
+          onChange={(event) => {
+            onUpdateSummary(event.target.value);
+          }}
+        />
+      </label>
+
+      <label className="editor-field">
+        <span>Type</span>
+        <select
+          className="field-input field-select"
+          value={node.type}
+          onChange={(event) => {
+            onUpdateType(event.target.value as TranscriptMapNodeType);
+          }}
+          disabled={editableTypes.length === 1}
+        >
+          {editableTypes.map((type) => (
+            <option key={type} value={type}>
+              {nodeTypeLabels[type]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="editor-actions">
+        {canDelete ? (
+          <button className="button-danger" type="button" onClick={onDeleteNode}>
+            Delete node
+          </button>
+        ) : (
+          <p className="editor-note">The thesis node stays locked in this first editing pass.</p>
+        )}
+      </div>
+
       <div className="evidence-fields">
-        <div className="evidence-field">
-          <span>Node label</span>
-          <p>{node.label}</p>
-        </div>
-        <div className="evidence-field">
-          <span>Node summary</span>
-          <p>{node.summary}</p>
-        </div>
         <div className="evidence-field">
           <span>Type</span>
           <p>{nodeTypeLabels[node.type]}</p>
@@ -485,18 +621,27 @@ function TranscriptEvidencePanel({
 function GraphView({
   map,
   selectedNodeId,
-  onSelectNode
+  positionOverrides,
+  onSelectNode,
+  onMoveNode,
+  onRenameNode,
+  onUpdateSummary,
+  onUpdateType,
+  onDeleteNode
 }: {
   map: TranscriptMap;
   selectedNodeId: string | null;
+  positionOverrides: NodePositionOverrides;
   onSelectNode: (nodeId: string) => void;
+  onMoveNode: (nodeId: string, position: NodePositionOverride) => void;
+  onRenameNode: (value: string) => void;
+  onUpdateSummary: (value: string) => void;
+  onUpdateType: (value: TranscriptMapNodeType) => void;
+  onDeleteNode: () => void;
 }): React.JSX.Element {
-  const graph = buildMindMap(map);
+  const graph = applyNodePositionOverrides(buildMindMap(map), positionOverrides);
   const viewportHeight = Math.max(720, Math.min(920, 460 + map.nodes.length * 24));
-  const selectedNode =
-    map.nodes.find((node) => node.id === selectedNodeId) ??
-    map.nodes.find((node) => node.id === map.thesisNodeId) ??
-    null;
+  const selectedNode = resolveSelectedNode(map, selectedNodeId);
 
   return (
     <>
@@ -527,7 +672,7 @@ function GraphView({
               };
             })}
             edges={graph.edges}
-            nodesDraggable={false}
+            nodesDraggable
             nodesConnectable={false}
             elementsSelectable
             onNodeClick={(_, node) => {
@@ -535,6 +680,13 @@ function GraphView({
 
               if (data.kind === "content") {
                 onSelectNode(data.node.id);
+              }
+            }}
+            onNodeDragStop={(_, node) => {
+              const data = node.data as MindMapData;
+
+              if (data.kind === "content") {
+                onMoveNode(data.node.id, node.position);
               }
             }}
             proOptions={{ hideAttribution: true }}
@@ -566,7 +718,14 @@ function GraphView({
           </ReactFlow>
         </div>
 
-        <TranscriptEvidencePanel node={selectedNode} />
+        <TranscriptEvidencePanel
+          node={selectedNode}
+          thesisNodeId={map.thesisNodeId}
+          onRenameNode={onRenameNode}
+          onUpdateSummary={onUpdateSummary}
+          onUpdateType={onUpdateType}
+          onDeleteNode={onDeleteNode}
+        />
       </div>
     </>
   );
@@ -576,9 +735,35 @@ function App(): React.JSX.Element {
   const [transcript, setTranscript] = useState(starterTranscript);
   const [map, setMap] = useState<TranscriptMap | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [positionOverrides, setPositionOverrides] = useState<NodePositionOverrides>({});
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  const selectedNode = map ? resolveSelectedNode(map, selectedNodeId) : null;
+
+  function updateSelectedNode(
+    updater: (node: TranscriptMapNode) => TranscriptMapNode
+  ): void {
+    if (!map || !selectedNode) {
+      return;
+    }
+
+    setMap(updateNodeInMap(map, selectedNode.id, updater));
+  }
+
+  function handleDeleteSelectedNode(): void {
+    if (!map || !selectedNode || selectedNode.id === map.thesisNodeId) {
+      return;
+    }
+
+    const nextMap = deleteNodeFromMap(map, selectedNode.id);
+    const { [selectedNode.id]: _, ...remainingPositionOverrides } = positionOverrides;
+
+    setMap(nextMap);
+    setPositionOverrides(remainingPositionOverrides);
+    setSelectedNodeId(resolveSelectedNode(nextMap, map.thesisNodeId)?.id ?? null);
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -615,6 +800,7 @@ function App(): React.JSX.Element {
       }
 
       setStatus("Transcript graph extracted.");
+      setPositionOverrides({});
       setSelectedNodeId(payload.data.thesisNodeId);
       startTransition(() => {
         setMap(payload.data);
@@ -689,7 +875,37 @@ function App(): React.JSX.Element {
             </div>
           </div>
 
-          <GraphView map={map} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} />
+          <GraphView
+            map={map}
+            selectedNodeId={selectedNodeId}
+            positionOverrides={positionOverrides}
+            onSelectNode={setSelectedNodeId}
+            onMoveNode={(nodeId, position) => {
+              setPositionOverrides((currentOverrides) => ({
+                ...currentOverrides,
+                [nodeId]: position
+              }));
+            }}
+            onRenameNode={(value) => {
+              updateSelectedNode((node) => ({
+                ...node,
+                label: value
+              }));
+            }}
+            onUpdateSummary={(value) => {
+              updateSelectedNode((node) => ({
+                ...node,
+                summary: value
+              }));
+            }}
+            onUpdateType={(value) => {
+              updateSelectedNode((node) => ({
+                ...node,
+                type: value
+              }));
+            }}
+            onDeleteNode={handleDeleteSelectedNode}
+          />
 
           <section className="edge-summary">
             <h3>Extracted relationships</h3>

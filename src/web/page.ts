@@ -260,6 +260,11 @@ button:disabled {
   color: var(--muted);
 }
 
+.panel-head {
+  display: grid;
+  gap: 8px;
+}
+
 .panel-kicker {
   margin: 0;
   letter-spacing: 0.12em;
@@ -267,6 +272,63 @@ button:disabled {
   color: var(--highlight-strong);
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.editor-note {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.editor-field {
+  display: grid;
+  gap: 8px;
+}
+
+.editor-field span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.field-input {
+  width: 100%;
+  border: 1px solid rgba(81, 61, 39, 0.16);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font: inherit;
+  padding: 12px 14px;
+  outline: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.field-input:focus {
+  border-color: rgba(217, 106, 56, 0.65);
+  box-shadow: 0 0 0 4px rgba(217, 106, 56, 0.12);
+}
+
+.field-select {
+  appearance: none;
+}
+
+.editor-textarea {
+  min-height: 132px;
+  resize: vertical;
+}
+
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.button-danger {
+  background: linear-gradient(135deg, #b84c1c 0%, #d96a38 100%);
+  box-shadow: 0 14px 28px rgba(184, 76, 28, 0.24);
 }
 
 .evidence-fields {

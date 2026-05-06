@@ -19,14 +19,31 @@ The current codebase is intentionally centered on the first product loop:
 2. Ask an LLM to produce only that shape.
 3. Validate the response before any UI touches it.
 4. Let a user paste transcript text into a tiny web app and inspect the returned graph.
-5. Render that validated output as a first-pass mind map.
+5. Render that validated output as a first-pass mind map with grounded inspection and basic correction tools.
 
 That gives you a clean contract for the next steps:
 
-- node detail panel with transcript grounding
-- basic user editing
 - save/load projects
 - richer graph rendering with React Flow or Cytoscape
+- better graph editing ergonomics
+
+## Current browser capabilities
+
+The local browser app now supports:
+
+- transcript-to-graph extraction through the local server
+- a React Flow mind map with D3-based initial layout
+- a click-to-inspect node editor and transcript evidence panel
+- inline node correction for label, summary, and safe type changes
+- deleting non-thesis nodes
+- dragging nodes to adjust layout locally in the current session
+- raw JSON inspection of the edited in-memory graph
+
+What it still does not do:
+
+- persist projects to disk, a database, or `localStorage`
+- support collaborative editing
+- provide full edge editing or advanced graph authoring
 
 ## What is in this scaffold
 
@@ -231,18 +248,18 @@ For an MVP, this is usually better than over-extracting every possible idea.
 
 Now that the schema layer and smallest browser flow exist, I would build the rest in this order:
 
-1. Richer graph renderer with React Flow
-2. Node side panel showing summary plus excerpt
-3. Manual node editing
-4. Save/load projects
-5. Better long-transcript handling with chunking and merge logic
+1. Save/load projects
+2. Edge creation and deletion
+3. Section editing and node creation
+4. Better long-transcript handling with chunking and merge logic
+5. Richer review and provenance tooling
 
 ## Known limitations in this first scaffold
 
 - It assumes a written transcript already exists.
 - It does not yet chunk very long transcripts.
 - The browser graph is intentionally minimal and custom-built, not yet a full editor-grade graph UI.
-- It does not yet persist projects.
+- It does not yet persist projects, so refreshes and rebuilds reset the current graph state.
 - Character offsets are optional because many models are weak at precise span indexing in a single pass.
 
 ## Useful scripts
@@ -262,7 +279,10 @@ The current repo now includes the smallest possible browser loop for step 2:
 1. start the local server
 2. paste transcript text into the textarea
 3. submit to `POST /api/transcript-map`
-4. inspect the returned graph layout and raw JSON
+4. inspect the returned graph, click nodes to review transcript evidence, and make basic edits
+5. optionally inspect the edited in-memory graph in the raw JSON panel
+
+Important: those browser edits are local to the current session only. They are not saved anywhere permanent yet.
 
 Run it with:
 
