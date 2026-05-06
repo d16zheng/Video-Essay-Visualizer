@@ -35,6 +35,10 @@ main {
   padding: 56px 0 80px;
 }
 
+#app-root {
+  min-height: calc(100vh - 136px);
+}
+
 .hero {
   margin-bottom: 28px;
 }
@@ -163,10 +167,6 @@ button:disabled {
   padding: 24px;
 }
 
-.result[hidden] {
-  display: none;
-}
-
 .result-head {
   display: grid;
   gap: 10px;
@@ -223,139 +223,82 @@ button:disabled {
   color: var(--muted);
 }
 
+.graph-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(280px, 360px);
+  gap: 18px;
+  align-items: start;
+}
+
 .graph-stage {
-  position: relative;
-  overflow: auto;
   border-radius: 26px;
   border: 1px solid var(--line);
   background:
     linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(248, 241, 233, 0.98));
-  min-height: 320px;
+  min-height: 720px;
+  overflow: hidden;
 }
 
-.graph-stage::before {
-  content: "";
+.evidence-panel {
   position: sticky;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 0;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
-}
-
-.edge-layer {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.section-grid {
-  position: relative;
-  z-index: 2;
+  top: 20px;
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(260px, 300px);
-  gap: 18px;
-  padding: 20px;
-  align-items: start;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 22px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.76);
 }
 
-.section-card {
-  display: grid;
-  gap: 14px;
-  align-content: start;
-  padding: 16px;
-  min-height: 240px;
-  border-radius: 24px;
-  border: 1px solid rgba(64, 49, 31, 0.1);
-  background: rgba(255, 255, 255, 0.78);
-}
-
-.section-kicker {
+.evidence-panel h3,
+.evidence-field p,
+.evidence-field blockquote {
   margin: 0;
-  color: var(--highlight-strong);
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
+}
+
+.evidence-panel--empty {
+  color: var(--muted);
+}
+
+.panel-kicker {
+  margin: 0;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
+  color: var(--highlight-strong);
+  font-size: 0.76rem;
   font-weight: 700;
 }
 
-.section-card h4 {
-  margin: 0;
-  font-size: 1.1rem;
+.evidence-fields {
+  display: grid;
+  gap: 14px;
 }
 
-.section-card > p {
-  margin: 0;
+.evidence-field {
+  display: grid;
+  gap: 6px;
+}
+
+.evidence-field span {
   color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.evidence-field p {
+  color: var(--ink);
   line-height: 1.55;
 }
 
-.node-stack {
-  display: grid;
-  gap: 12px;
-}
-
-.node-card {
-  position: relative;
-  padding: 14px;
-  border-radius: 18px;
-  border: 1px solid rgba(64, 49, 31, 0.12);
-  background: var(--panel-strong);
-  box-shadow: 0 10px 18px rgba(56, 42, 28, 0.08);
-}
-
-.node-card[data-node-type="thesis"] {
-  background: linear-gradient(180deg, rgba(255, 247, 241, 1), rgba(255, 239, 230, 1));
-}
-
-.node-card[data-node-type="evidence"] {
-  background: linear-gradient(180deg, rgba(241, 250, 244, 1), rgba(231, 245, 236, 1));
-}
-
-.node-card[data-node-type="counterpoint"] {
-  background: linear-gradient(180deg, rgba(252, 244, 241, 1), rgba(247, 235, 230, 1));
-}
-
-.node-type {
-  display: inline-flex;
-  align-items: center;
-  margin-bottom: 8px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(64, 49, 31, 0.08);
-  color: var(--muted);
-  font-size: 0.77rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.node-card h5,
-.node-card p,
-.node-card blockquote,
-.edge-list li {
-  margin: 0;
-}
-
-.node-card h5 {
-  font-size: 1rem;
-}
-
-.node-card p {
-  margin-top: 8px;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
-.node-card blockquote {
-  margin-top: 10px;
-  padding-left: 12px;
-  border-left: 3px solid rgba(217, 106, 56, 0.35);
+.evidence-quote {
+  padding: 14px 16px;
+  border-left: 3px solid rgba(217, 106, 56, 0.45);
+  border-radius: 14px;
+  background: rgba(217, 106, 56, 0.06);
   color: var(--ink);
-  font-size: 0.94rem;
-  line-height: 1.48;
+  line-height: 1.6;
 }
 
 .edge-summary {
@@ -409,6 +352,179 @@ button:disabled {
   line-height: 1.45;
 }
 
+.hint {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.react-flow__renderer,
+.react-flow__pane {
+  cursor: grab;
+}
+
+.react-flow__node {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+.react-flow__controls {
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 14px 28px rgba(79, 58, 37, 0.16);
+}
+
+.react-flow__controls-button {
+  width: 34px;
+  height: 34px;
+  border-color: rgba(64, 49, 31, 0.1);
+  background: rgba(255, 252, 247, 0.96);
+  color: var(--ink);
+}
+
+.react-flow__background pattern {
+  color: rgba(184, 76, 28, 0.16);
+}
+
+.mind-node-shell {
+  width: 100%;
+}
+
+.mind-node {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(64, 49, 31, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 14px 28px rgba(56, 42, 28, 0.1);
+}
+
+.mind-node h4,
+.mind-node p,
+.edge-list li,
+.section-stats li {
+  margin: 0;
+}
+
+.mind-node-shell--selected .mind-node {
+  border-color: rgba(217, 106, 56, 0.42);
+  box-shadow:
+    0 14px 28px rgba(56, 42, 28, 0.12),
+    0 0 0 3px rgba(217, 106, 56, 0.14);
+}
+
+.mind-node--section {
+  gap: 12px;
+  min-height: 172px;
+  background: linear-gradient(180deg, rgba(255, 251, 246, 0.96), rgba(248, 239, 228, 0.92));
+  border-color: rgba(184, 76, 28, 0.15);
+}
+
+.mind-node--thesis {
+  background: linear-gradient(180deg, rgba(255, 247, 241, 1), rgba(255, 239, 230, 1));
+}
+
+.mind-node--evidence,
+.mind-node--example {
+  background: linear-gradient(180deg, rgba(241, 250, 244, 1), rgba(231, 245, 236, 1));
+}
+
+.mind-node--counterpoint {
+  background: linear-gradient(180deg, rgba(252, 244, 241, 1), rgba(247, 235, 230, 1));
+}
+
+.mind-node--conclusion {
+  background: linear-gradient(180deg, rgba(247, 248, 255, 1), rgba(236, 240, 252, 1));
+}
+
+.node-type,
+.section-kicker {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(64, 49, 31, 0.08);
+  color: var(--muted);
+  font-size: 0.77rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.section-kicker {
+  background: rgba(217, 106, 56, 0.1);
+  color: var(--highlight-strong);
+}
+
+.mind-node h4 {
+  font-size: 1rem;
+}
+
+.mind-node p {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.node-evidence {
+  border-radius: 16px;
+  border: 1px solid rgba(64, 49, 31, 0.1);
+  background: rgba(255, 252, 247, 0.72);
+  overflow: hidden;
+}
+
+.node-evidence summary {
+  padding: 10px 12px;
+  cursor: pointer;
+  color: var(--highlight-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.node-evidence blockquote {
+  margin: 0;
+  padding: 0 12px 12px 16px;
+  border-left: 3px solid rgba(217, 106, 56, 0.35);
+  color: var(--ink);
+  font-size: 0.94rem;
+  line-height: 1.48;
+}
+
+.node-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.node-meta span {
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(64, 49, 31, 0.08);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.section-stats {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.section-stats li {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 @media (max-width: 720px) {
   main {
     width: min(100vw - 20px, 1180px);
@@ -427,328 +543,19 @@ button:disabled {
   .graph-head {
     display: grid;
   }
-}
-`;
 
-const appScript = String.raw`
-const form = document.getElementById("transcript-form");
-const transcriptInput = document.getElementById("transcript-input");
-const submitButton = document.getElementById("submit-button");
-const statusMessage = document.getElementById("status-message");
-const errorMessage = document.getElementById("error-message");
-const resultPanel = document.getElementById("result-panel");
-const resultTitle = document.getElementById("result-title");
-const resultSummary = document.getElementById("result-summary");
-const resultMeta = document.getElementById("result-meta");
-const thesisCard = document.getElementById("thesis-card");
-const thesisLabel = document.getElementById("thesis-label");
-const thesisSummary = document.getElementById("thesis-summary");
-const thesisExcerpt = document.getElementById("thesis-excerpt");
-const sectionGrid = document.getElementById("section-grid");
-const edgeLayer = document.getElementById("edge-layer");
-const graphStage = document.getElementById("graph-stage");
-const edgeList = document.getElementById("edge-list");
-const rawJson = document.getElementById("raw-json");
-
-let currentMap = null;
-
-function escapeHtml(value) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function edgeColor(relationship) {
-  switch (relationship) {
-    case "supports":
-      return "#2f7d57";
-    case "contrasts":
-      return "#9d2d32";
-    case "concludes":
-      return "#5f6b2d";
-    case "explains":
-      return "#2563eb";
-    case "contains":
-      return "#b84c1c";
-    case "leads_to":
-      return "#7a5c2b";
-    default:
-      return "#8a7760";
-  }
-}
-
-function formatCount(label, value) {
-  return value + " " + label + (value === 1 ? "" : "s");
-}
-
-function setLoading(isLoading) {
-  transcriptInput.disabled = isLoading;
-  submitButton.disabled = isLoading;
-  submitButton.textContent = isLoading ? "Building graph..." : "Build graph";
-  statusMessage.hidden = !isLoading;
-  statusMessage.textContent = isLoading ? "Extracting structure from the transcript..." : "";
-}
-
-function showError(message) {
-  errorMessage.hidden = false;
-  errorMessage.textContent = message;
-}
-
-function clearError() {
-  errorMessage.hidden = true;
-  errorMessage.textContent = "";
-}
-
-function renderMeta(map) {
-  const counts = [
-    formatCount("section", map.sections.length),
-    formatCount("node", map.nodes.length),
-    formatCount("edge", map.edges.length),
-    map.source.transcriptLengthChars + " chars"
-  ];
-
-  resultMeta.innerHTML = counts
-    .map(function (item) {
-      return '<span class="pill">' + escapeHtml(item) + "</span>";
-    })
-    .join("");
-}
-
-function renderThesis(map) {
-  const thesisNode = map.nodes.find(function (node) {
-    return node.id === map.thesisNodeId;
-  });
-
-  if (!thesisNode) {
-    thesisCard.hidden = true;
-    return;
+  .graph-workspace {
+    grid-template-columns: 1fr;
   }
 
-  thesisCard.hidden = false;
-  thesisLabel.textContent = thesisNode.label;
-  thesisSummary.textContent = thesisNode.summary;
-  thesisExcerpt.textContent = '"' + thesisNode.transcriptSpan.excerpt + '"';
-}
-
-function renderSections(map) {
-  const nodesById = new Map(
-    map.nodes.map(function (node) {
-      return [node.id, node];
-    })
-  );
-
-  sectionGrid.innerHTML = "";
-
-  map.sections
-    .slice()
-    .sort(function (left, right) {
-      return left.order - right.order;
-    })
-    .forEach(function (section, index) {
-      const sectionCard = document.createElement("section");
-      sectionCard.className = "section-card";
-
-      const nodeMarkup = section.nodeIds
-        .map(function (nodeId) {
-          const node = nodesById.get(nodeId);
-
-          if (!node) {
-            return "";
-          }
-
-          const confidence = typeof node.confidence === "number"
-            ? '<p>Confidence: ' + Math.round(node.confidence * 100) + '%</p>'
-            : "";
-
-          return [
-            '<article class="node-card" data-node-id="' + escapeHtml(node.id) + '" data-node-type="' + escapeHtml(node.type) + '">',
-            '<div class="node-type">' + escapeHtml(node.type) + "</div>",
-            "<h5>" + escapeHtml(node.label) + "</h5>",
-            "<p>" + escapeHtml(node.summary) + "</p>",
-            confidence,
-            "<blockquote>" + escapeHtml(node.transcriptSpan.excerpt) + "</blockquote>",
-            "</article>"
-          ].join("");
-        })
-        .join("");
-
-      sectionCard.innerHTML = [
-        '<p class="section-kicker">Section ' + String(index + 1) + "</p>",
-        "<h4>" + escapeHtml(section.title) + "</h4>",
-        "<p>" + escapeHtml(section.summary) + "</p>",
-        '<div class="node-stack">' + nodeMarkup + "</div>"
-      ].join("");
-
-      sectionGrid.append(sectionCard);
-    });
-}
-
-function renderEdges(map) {
-  const stageRect = graphStage.getBoundingClientRect();
-  const stageWidth = Math.max(graphStage.scrollWidth, stageRect.width);
-  const stageHeight = Math.max(graphStage.scrollHeight, stageRect.height);
-
-  edgeLayer.setAttribute("width", String(stageWidth));
-  edgeLayer.setAttribute("height", String(stageHeight));
-  edgeLayer.setAttribute("viewBox", "0 0 " + String(stageWidth) + " " + String(stageHeight));
-  edgeLayer.innerHTML = "";
-
-  const nodePositions = new Map();
-
-  graphStage.querySelectorAll(".node-card").forEach(function (nodeElement) {
-    const rect = nodeElement.getBoundingClientRect();
-    const nodeId = nodeElement.getAttribute("data-node-id");
-
-    if (!nodeId) {
-      return;
-    }
-
-    nodePositions.set(nodeId, {
-      x: rect.left - stageRect.left + graphStage.scrollLeft + rect.width / 2,
-      y: rect.top - stageRect.top + graphStage.scrollTop + rect.height / 2
-    });
-  });
-
-  map.edges.forEach(function (edge) {
-    const source = nodePositions.get(edge.source);
-    const target = nodePositions.get(edge.target);
-
-    if (!source || !target) {
-      return;
-    }
-
-    const curveStrength = Math.max(48, Math.abs(target.x - source.x) / 2);
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    const marker = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-
-    path.setAttribute(
-      "d",
-      "M " + String(source.x) + " " + String(source.y) +
-        " C " + String(source.x + curveStrength) + " " + String(source.y) +
-        ", " + String(target.x - curveStrength) + " " + String(target.y) +
-        ", " + String(target.x) + " " + String(target.y)
-    );
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", edgeColor(edge.relationship));
-    path.setAttribute("stroke-width", "2.5");
-    path.setAttribute("stroke-linecap", "round");
-    path.setAttribute("opacity", "0.72");
-
-    marker.setAttribute("cx", String(target.x));
-    marker.setAttribute("cy", String(target.y));
-    marker.setAttribute("r", "4");
-    marker.setAttribute("fill", edgeColor(edge.relationship));
-
-    edgeLayer.append(path, marker);
-  });
-}
-
-function renderEdgeSummary(map) {
-  const nodesById = new Map(
-    map.nodes.map(function (node) {
-      return [node.id, node];
-    })
-  );
-
-  edgeList.innerHTML = map.edges.length
-    ? map.edges
-        .map(function (edge) {
-          const sourceLabel = nodesById.get(edge.source)?.label ?? edge.source;
-          const targetLabel = nodesById.get(edge.target)?.label ?? edge.target;
-          const explanation = edge.explanation ? ' <span>' + escapeHtml(edge.explanation) + "</span>" : "";
-
-          return [
-            "<li>",
-            "<strong>" + escapeHtml(sourceLabel) + "</strong>",
-            " ",
-            '<span>' + escapeHtml(edge.relationship) + " -> " + escapeHtml(targetLabel) + "</span>",
-            explanation,
-            "</li>"
-          ].join("");
-        })
-        .join("")
-    : "<li><span>No explicit edges were returned for this transcript.</span></li>";
-}
-
-function renderMap(map) {
-  currentMap = map;
-  resultPanel.hidden = false;
-  resultTitle.textContent = map.title;
-  resultSummary.textContent = map.summary;
-  renderMeta(map);
-  renderThesis(map);
-  renderSections(map);
-  renderEdgeSummary(map);
-  rawJson.textContent = JSON.stringify(map, null, 2);
-
-  window.requestAnimationFrame(function () {
-    renderEdges(map);
-  });
-}
-
-window.addEventListener("resize", function () {
-  if (!currentMap) {
-    return;
+  .graph-stage {
+    min-height: 620px;
   }
 
-  window.requestAnimationFrame(function () {
-    renderEdges(currentMap);
-  });
-});
-
-graphStage.addEventListener("scroll", function () {
-  if (!currentMap) {
-    return;
+  .evidence-panel {
+    position: static;
   }
-
-  window.requestAnimationFrame(function () {
-    renderEdges(currentMap);
-  });
-});
-
-form.addEventListener("submit", async function (event) {
-  event.preventDefault();
-  clearError();
-
-  const transcript = transcriptInput.value.trim();
-
-  if (!transcript) {
-    showError("Paste a transcript before submitting.");
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    const response = await fetch("/api/transcript-map", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        transcript: transcript
-      })
-    });
-
-    const payload = await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        typeof payload.error === "string" ? payload.error : "Something went wrong while building the graph."
-      );
-    }
-
-    renderMap(payload.data);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected error.";
-    showError(message);
-  } finally {
-    setLoading(false);
-  }
-});
+}
 `;
 
 export function renderAppPage(): string {
@@ -758,76 +565,15 @@ export function renderAppPage(): string {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Visualize Transcript</title>
+    <link rel="stylesheet" href="/assets/app.css" />
     <style>${appStyles}</style>
   </head>
   <body>
     <main>
-      <section class="hero">
-        <p class="eyebrow">Transcript to graph</p>
-        <h1>Paste text. Get structure.</h1>
-        <p class="hero-copy">
-          This first pass is intentionally tiny: paste a transcript, submit it, and inspect the graph that comes back.
-          No links, uploads, accounts, payments, or saved projects yet.
-        </p>
-      </section>
-
-      <section class="panel composer">
-        <form id="transcript-form">
-          <label for="transcript-input">
-            Transcript
-            <span class="label-note">Paste plain text. The backend will extract sections, nodes, and edges.</span>
-          </label>
-          <textarea
-            id="transcript-input"
-            name="transcript"
-            placeholder="Paste a transcript here..."
-            spellcheck="false"
-          ></textarea>
-          <div class="controls">
-            <button id="submit-button" type="submit">Build graph</button>
-            <p id="status-message" class="status" role="status" hidden></p>
-            <p id="error-message" class="error" role="alert" hidden></p>
-          </div>
-        </form>
-      </section>
-
-      <section id="result-panel" class="panel result" hidden>
-        <div class="result-head">
-          <h2 id="result-title"></h2>
-          <p id="result-summary" class="hero-copy"></p>
-          <div id="result-meta" class="result-meta"></div>
-        </div>
-
-        <article id="thesis-card" class="thesis-card" hidden>
-          <h3>Main thesis</h3>
-          <p><strong id="thesis-label"></strong></p>
-          <p id="thesis-summary"></p>
-          <p id="thesis-excerpt"></p>
-        </article>
-
-        <div class="graph-head">
-          <h3>Graph view</h3>
-          <p>Sections are laid out left to right. Curved lines show extracted relationships between nodes.</p>
-        </div>
-
-        <div id="graph-stage" class="graph-stage">
-          <svg id="edge-layer" class="edge-layer" aria-hidden="true"></svg>
-          <div id="section-grid" class="section-grid"></div>
-        </div>
-
-        <section class="edge-summary">
-          <h3>Relationships</h3>
-          <ul id="edge-list" class="edge-list"></ul>
-        </section>
-
-        <details class="json-card">
-          <summary>Raw JSON</summary>
-          <pre id="raw-json"></pre>
-        </details>
-      </section>
+      <div id="app-root"></div>
     </main>
 
-    <script type="module">${appScript}</script>
+    <script type="module" src="/assets/app.js"></script>
   </body>
 </html>`;
 }

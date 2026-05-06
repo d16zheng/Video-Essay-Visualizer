@@ -13,12 +13,13 @@ This version uses OpenAI as the LLM provider, with `gpt-5-mini` as the default m
 
 ## MVP focus
 
-The current codebase is intentionally centered on the first two product steps:
+The current codebase is intentionally centered on the first product loop:
 
 1. Define a stable output schema.
 2. Ask an LLM to produce only that shape.
 3. Validate the response before any UI touches it.
 4. Let a user paste transcript text into a tiny web app and inspect the returned graph.
+5. Render that validated output as a first-pass mind map.
 
 That gives you a clean contract for the next steps:
 
@@ -47,7 +48,10 @@ src/
   server/
     index.ts                     # Tiny HTTP server for the paste-to-graph flow
   web/
-    page.ts                      # Inline page HTML, CSS, and browser behavior
+    client.tsx                   # React app with React Flow + D3 layout
+    page.ts                      # HTML shell and app styling
+scripts/
+  build-web.mjs                  # Bundles the browser app with esbuild
 ```
 
 `src/core/schema/transcript-map.ts` is the only authoritative schema definition. Anything under `dist/` is generated build output and should not be treated as a second source of truth.
@@ -120,6 +124,22 @@ This scaffold now defaults to:
 `gpt-5-mini`
 
 You can swap models later through `OPENAI_MODEL`.
+
+## Using a real OpenAI account
+
+This repo does not log into a ChatGPT browser session.
+
+It uses the OpenAI API directly from the server in `src/core/services/analyze-transcript.ts`, which sends a `POST` request to `https://api.openai.com/v1/responses` with `Authorization: Bearer ${OPENAI_API_KEY}`.
+
+To make that work with a real account:
+
+1. Sign into the API platform at `platform.openai.com`.
+2. Create an API key.
+3. Add billing to your API platform account if needed.
+4. Copy `.env.example` to `.env`.
+5. Set `OPENAI_API_KEY` and optionally `OPENAI_MODEL`.
+
+Important: ChatGPT subscriptions and API billing are managed separately. Having ChatGPT Plus or Pro does not automatically authenticate or fund API usage for this repo.
 
 ## Setup
 

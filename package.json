@@ -7,18 +7,29 @@
   "scripts": {
     "clean": "node --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
     "prebuild": "npm run clean",
-    "build": "tsc --project tsconfig.json",
-    "dev": "tsx --watch src/server/index.ts",
+    "build": "npm run build:server && npm run build:web",
+    "build:server": "tsc --project tsconfig.json",
+    "build:web": "node scripts/build-web.mjs",
+    "dev": "npm run build:web && tsx --watch src/server/index.ts",
     "serve": "npm run build && node dist/server/index.js",
     "start": "node dist/server/index.js",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "extract": "tsx src/cli.ts"
   },
   "dependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@xyflow/react": "^12.10.2",
+    "d3-hierarchy": "^3.1.2",
+    "esbuild": "^0.28.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
     "zod": "^3.24.4"
   },
   "devDependencies": {
+    "@types/d3-hierarchy": "^3.1.7",
     "@types/node": "^22.15.21",
+    "jsdom": "^29.1.1",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   }

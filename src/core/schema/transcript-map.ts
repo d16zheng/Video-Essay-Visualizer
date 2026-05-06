@@ -20,12 +20,19 @@ export const transcriptMapEdgeRelationships = [
   "concludes"
 ] as const;
 
+function optionalFromNull<T extends z.ZodTypeAny>(schema: T) {
+  return z.preprocess(
+    (value) => (value === null ? undefined : value),
+    schema.optional()
+  );
+}
+
 const transcriptSpanSchema = z.object({
   excerpt: z
     .string()
     .min(1, "Every node should include an excerpt that grounds it in the transcript."),
-  startChar: z.number().int().nonnegative().optional(),
-  endChar: z.number().int().nonnegative().optional()
+  startChar: optionalFromNull(z.number().int().nonnegative()),
+  endChar: optionalFromNull(z.number().int().nonnegative())
 });
 
 export const transcriptMapNodeSchema = z.object({
@@ -35,8 +42,8 @@ export const transcriptMapNodeSchema = z.object({
   summary: z.string().min(1).max(500),
   sectionId: z.string().min(1),
   transcriptSpan: transcriptSpanSchema,
-  confidence: z.number().min(0).max(1).optional(),
-  isInferred: z.boolean().optional()
+  confidence: optionalFromNull(z.number().min(0).max(1)),
+  isInferred: optionalFromNull(z.boolean())
 });
 
 export const transcriptMapSectionSchema = z.object({
@@ -52,7 +59,7 @@ export const transcriptMapEdgeSchema = z.object({
   source: z.string().min(1),
   target: z.string().min(1),
   relationship: z.enum(transcriptMapEdgeRelationships),
-  explanation: z.string().min(1).max(280).optional()
+  explanation: optionalFromNull(z.string().min(1).max(280))
 });
 
 export const transcriptMapSchema = z
@@ -168,6 +175,63 @@ export type TranscriptMapNode = z.infer<typeof transcriptMapNodeSchema>;
 export type TranscriptMapSection = z.infer<typeof transcriptMapSectionSchema>;
 export type TranscriptMapEdge = z.infer<typeof transcriptMapEdgeSchema>;
 
+function nullableIntegerSchema(minimum: number) {
+  return {
+    anyOf: [
+      {
+        type: "integer",
+        minimum
+      },
+      {
+        type: "null"
+      }
+    ]
+  } as const;
+}
+
+function nullableNumberSchema(minimum: number, maximum: number) {
+  return {
+    anyOf: [
+      {
+        type: "number",
+        minimum,
+        maximum
+      },
+      {
+        type: "null"
+      }
+    ]
+  } as const;
+}
+
+function nullableBooleanSchema() {
+  return {
+    anyOf: [
+      {
+        type: "boolean"
+      },
+      {
+        type: "null"
+      }
+    ]
+  } as const;
+}
+
+function nullableStringSchema(minLength: number, maxLength: number) {
+  return {
+    anyOf: [
+      {
+        type: "string",
+        minLength,
+        maxLength
+      },
+      {
+        type: "null"
+      }
+    ]
+  } as const;
+}
+
 export const transcriptMapJsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -228,7 +292,16 @@ export const transcriptMapJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["id", "type", "label", "summary", "sectionId", "transcriptSpan"],
+        required: [
+          "id",
+          "type",
+          "label",
+          "summary",
+          "sectionId",
+          "transcriptSpan",
+          "confidence",
+          "isInferred"
+        ],
         properties: {
           id: { type: "string", minLength: 1 },
           type: {
@@ -241,21 +314,15 @@ export const transcriptMapJsonSchema = {
           transcriptSpan: {
             type: "object",
             additionalProperties: false,
-            required: ["excerpt"],
+            required: ["excerpt", "startChar", "endChar"],
             properties: {
               excerpt: { type: "string", minLength: 1 },
-              startChar: { type: "integer", minimum: 0 },
-              endChar: { type: "integer", minimum: 0 }
+              startChar: nullableIntegerSchema(0),
+              endChar: nullableIntegerSchema(0)
             }
           },
-          confidence: {
-            type: "number",
-            minimum: 0,
-            maximum: 1
-          },
-          isInferred: {
-            type: "boolean"
-          }
+          confidence: nullableNumberSchema(0, 1),
+          isInferred: nullableBooleanSchema()
         }
       }
     },
@@ -265,7 +332,7 @@ export const transcriptMapJsonSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["id", "source", "target", "relationship"],
+        required: ["id", "source", "target", "relationship", "explanation"],
         properties: {
           id: { type: "string", minLength: 1 },
           source: { type: "string", minLength: 1 },
@@ -274,7 +341,7 @@ export const transcriptMapJsonSchema = {
             type: "string",
             enum: [...transcriptMapEdgeRelationships]
           },
-          explanation: { type: "string", minLength: 1, maxLength: 280 }
+          explanation: nullableStringSchema(1, 280)
         }
       }
     },
@@ -297,6 +364,26 @@ export const transcriptMapJsonSchema = {
   }
 } as const;
 
+function stripNullObjectProperties(input: unknown): unknown {
+  if (Array.isArray(input)) {
+    return input.map(stripNullObjectProperties);
+  }
+
+  if (input && typeof input === "object") {
+    const entries = Object.entries(input).flatMap(([key, value]) => {
+      if (value === null) {
+        return [];
+      }
+
+      return [[key, stripNullObjectProperties(value)]];
+    });
+
+    return Object.fromEntries(entries);
+  }
+
+  return input;
+}
+
 export function parseTranscriptMap(input: unknown): TranscriptMap {
-  return transcriptMapSchema.parse(input);
+  return transcriptMapSchema.parse(stripNullObjectProperties(input));
 }

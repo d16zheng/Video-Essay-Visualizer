@@ -1,0 +1,740 @@
+import React, { startTransition, useState } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  Background,
+  Controls,
+  MarkerType,
+  MiniMap,
+  Position,
+  ReactFlow,
+  type Edge,
+  type Node
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { hierarchy, tree } from "d3-hierarchy";
+
+import type {
+  TranscriptMap,
+  TranscriptMapEdge,
+  TranscriptMapEdgeRelationship,
+  TranscriptMapNode,
+  TranscriptMapNodeType,
+  TranscriptMapSection
+} from "../core/schema/transcript-map.js";
+
+type SectionNodeData = {
+  kind: "section";
+  title: string;
+  summary: string;
+  order: number;
+  claimCount: number;
+  detailCount: number;
+};
+
+type ContentNodeData = {
+  kind: "content";
+  node: TranscriptMapNode;
+};
+
+type MindMapData = SectionNodeData | ContentNodeData;
+
+type MindMapGraph = {
+  nodes: Array<Node<MindMapData>>;
+  edges: Array<Edge>;
+};
+
+type MapApiResponse =
+  | {
+      ok: true;
+      data: TranscriptMap;
+    }
+  | {
+      ok: false;
+      error?: string;
+    };
+
+type TreeBranch = {
+  id: string;
+  children: TreeBranch[];
+};
+
+const starterTranscript = `Section 1: Why creativity often feels blocked.
+Most people think they lack ideas, but the real problem is usually fear of producing bad work. The first claim is that perfectionism shuts down experimentation before it starts. One example is the student who waits for inspiration instead of drafting early. Evidence for this comes from repeated creative routines: people who make something daily generate more usable ideas over time.
+
+Section 2: Structure creates freedom.
+The next claim is that constraints help the mind focus. A short deadline, a fixed format, or a narrow theme can reduce decision fatigue. For example, a writer asked to produce one paragraph a day often finishes more than a writer chasing the perfect essay. This can seem counterintuitive, but the counterpoint is that rigid systems can become stale if they never change.
+
+Section 3: Reflection turns output into growth.
+The conclusion is that creative momentum comes from cycles of making, reviewing, and adjusting instead of waiting for confidence first.`;
+
+const edgePalette: Record<TranscriptMapEdgeRelationship | "helper", string> = {
+  contains: "#b84c1c",
+  supports: "#2f7d57",
+  explains: "#2563eb",
+  contrasts: "#9d2d32",
+  leads_to: "#7a5c2b",
+  concludes: "#5f6b2d",
+  helper: "#bda78f"
+};
+
+const nodeTypeLabels: Record<TranscriptMapNodeType, string> = {
+  thesis: "Thesis",
+  claim: "Claim",
+  evidence: "Evidence",
+  example: "Example",
+  counterpoint: "Counterpoint",
+  conclusion: "Conclusion"
+};
+
+function formatCount(label: string, value: number): string {
+  return `${value} ${label}${value === 1 ? "" : "s"}`;
+}
+
+function edgeColor(relationship: TranscriptMapEdgeRelationship | "helper"): string {
+  return edgePalette[relationship];
+}
+
+function isClaimLinked(edge: TranscriptMapEdge, claimId: string, nodeId: string): boolean {
+  return (
+    (edge.source === claimId && edge.target === nodeId) ||
+    (edge.source === nodeId && edge.target === claimId)
+  );
+}
+
+function buildSectionBranch(
+  section: TranscriptMapSection,
+  nodesById: Map<string, TranscriptMapNode>,
+  edges: TranscriptMapEdge[]
+): TreeBranch {
+  const sectionNodes = section.nodeIds
+    .map((nodeId) => nodesById.get(nodeId))
+    .filter((node): node is TranscriptMapNode => Boolean(node))
+    .filter((node) => node.type !== "thesis" && node.type !== "conclusion");
+
+  const claimNodes = sectionNodes.filter((node) => node.type === "claim");
+  const claimChildren = new Map<string, TranscriptMapNode[]>();
+  const assignedChildIds = new Set<string>();
+
+  for (const claimNode of claimNodes) {
+    const matchingChildren = sectionNodes.filter((node) => {
+      if (node.id === claimNode.id || node.type === "claim") {
+        return false;
+      }
+
+      return edges.some((edge) => isClaimLinked(edge, claimNode.id, node.id));
+    });
+
+    if (matchingChildren.length > 0) {
+      claimChildren.set(claimNode.id, matchingChildren);
+    }
+
+    for (const childNode of matchingChildren) {
+      assignedChildIds.add(childNode.id);
+    }
+  }
+
+  const unattachedNodes = sectionNodes.filter(
+    (node) => node.type !== "claim" && !assignedChildIds.has(node.id)
+  );
+
+  return {
+    id: `section:${section.id}`,
+    children: [
+      ...claimNodes.map((claimNode) => ({
+        id: claimNode.id,
+        children:
+          claimChildren.get(claimNode.id)?.map((childNode) => ({
+            id: childNode.id,
+            children: []
+          })) ?? []
+      })),
+      ...unattachedNodes.map((node) => ({
+        id: node.id,
+        children: []
+      }))
+    ]
+  };
+}
+
+function buildMindMap(map: TranscriptMap): MindMapGraph {
+  const nodesById = new Map(map.nodes.map((node) => [node.id, node]));
+  const sortedSections = map.sections.slice().sort((left, right) => left.order - right.order);
+  const thesisNode = nodesById.get(map.thesisNodeId);
+  const conclusionNodes = map.nodes.filter((node) => node.type === "conclusion");
+
+  const graphNodes: Array<Node<MindMapData>> = [];
+  const graphEdges: Array<Edge> = [];
+
+  const sectionGap = 360;
+  const sectionWidth = 300;
+  const contentWidth = 240;
+  const graphPadding = 180;
+  const topY = 40;
+  const sectionY = 250;
+  const rowGap = 190;
+  const totalWidth =
+    graphPadding * 2 + sectionWidth + Math.max(sortedSections.length - 1, 0) * sectionGap;
+  const centerX = totalWidth / 2;
+
+  if (thesisNode) {
+    graphNodes.push({
+      id: thesisNode.id,
+      position: {
+        x: centerX - contentWidth / 2,
+        y: topY
+      },
+      data: {
+        kind: "content",
+        node: thesisNode
+      },
+      className: "mind-node-shell",
+      style: { width: contentWidth },
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
+      draggable: false
+    });
+  }
+
+  let deepestY = sectionY;
+
+  for (const [index, section] of sortedSections.entries()) {
+    const branch = buildSectionBranch(section, nodesById, map.edges);
+    const sectionTree = tree<TreeBranch>().nodeSize([210, rowGap]);
+    const sectionHierarchy = hierarchy(branch);
+
+    sectionTree(sectionHierarchy);
+
+    const sectionCenterX = graphPadding + sectionWidth / 2 + index * sectionGap;
+    const sectionNodeId = `section:${section.id}`;
+    const sectionNodes = section.nodeIds
+      .map((nodeId) => nodesById.get(nodeId))
+      .filter((node): node is TranscriptMapNode => Boolean(node))
+      .filter((node) => node.type !== "thesis" && node.type !== "conclusion");
+
+    graphNodes.push({
+      id: sectionNodeId,
+      position: {
+        x: sectionCenterX - sectionWidth / 2,
+        y: sectionY
+      },
+      data: {
+        kind: "section",
+        title: section.title,
+        summary: section.summary,
+        order: section.order,
+        claimCount: sectionNodes.filter((node) => node.type === "claim").length,
+        detailCount: sectionNodes.filter((node) => node.type !== "claim").length
+      },
+      className: "mind-node-shell",
+      style: { width: sectionWidth },
+      sourcePosition: Position.Bottom,
+      targetPosition: Position.Top,
+      draggable: false
+    });
+
+    if (thesisNode) {
+      graphEdges.push({
+        id: `helper:${map.thesisNodeId}:${sectionNodeId}`,
+        source: map.thesisNodeId,
+        target: sectionNodeId,
+        type: "smoothstep",
+        animated: false,
+        style: {
+          stroke: edgeColor("helper"),
+          strokeDasharray: "7 7",
+          strokeWidth: 1.5,
+          opacity: 0.5
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: edgeColor("helper")
+        }
+      });
+    }
+
+    for (const descendant of sectionHierarchy.descendants().slice(1)) {
+      const sourceNode = nodesById.get(descendant.data.id);
+
+      if (!sourceNode) {
+        continue;
+      }
+
+      const parentBranch = descendant.parent?.data.id;
+      const globalCenterX =
+        sectionCenterX + (descendant.x ?? 0) - (sectionHierarchy.x ?? 0);
+      const globalY = sectionY + 150 + (descendant.y ?? 0);
+
+      deepestY = Math.max(deepestY, globalY);
+
+      graphNodes.push({
+        id: sourceNode.id,
+        position: {
+          x: globalCenterX - contentWidth / 2,
+          y: globalY
+        },
+        data: {
+          kind: "content",
+          node: sourceNode
+        },
+        className: "mind-node-shell",
+        style: { width: contentWidth },
+        sourcePosition: sourceNode.type === "conclusion" ? Position.Top : Position.Bottom,
+        targetPosition: sourceNode.type === "thesis" ? Position.Bottom : Position.Top,
+        draggable: false
+      });
+
+      if (parentBranch) {
+        const hasExplicitEdge = map.edges.some(
+          (edge) =>
+            (edge.source === parentBranch && edge.target === sourceNode.id) ||
+            (edge.source === sourceNode.id && edge.target === parentBranch)
+        );
+
+        if (!hasExplicitEdge) {
+          graphEdges.push({
+            id: `helper:${parentBranch}:${sourceNode.id}`,
+            source: parentBranch,
+            target: sourceNode.id,
+            type: "smoothstep",
+            style: {
+              stroke: edgeColor("helper"),
+              strokeDasharray: "6 6",
+              strokeWidth: 1.5,
+              opacity: 0.55
+            },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: edgeColor("helper")
+            }
+          });
+        }
+      }
+    }
+  }
+
+  const renderedBeforeConclusions = new Set(graphNodes.map((node) => node.id));
+  const conclusionY = deepestY + 240;
+
+  for (const [index, conclusionNode] of conclusionNodes.entries()) {
+    if (renderedBeforeConclusions.has(conclusionNode.id)) {
+      continue;
+    }
+
+    const totalSpan = Math.max((conclusionNodes.length - 1) * 280, 0);
+    const centerOffset = index * 280 - totalSpan / 2;
+
+    graphNodes.push({
+      id: conclusionNode.id,
+      position: {
+        x: centerX + centerOffset - contentWidth / 2,
+        y: conclusionY
+      },
+      data: {
+        kind: "content",
+        node: conclusionNode
+      },
+      className: "mind-node-shell",
+      style: { width: contentWidth },
+      sourcePosition: Position.Top,
+      targetPosition: Position.Top,
+      draggable: false
+    });
+  }
+
+  const renderedNodeIds = new Set(graphNodes.map((node) => node.id));
+
+  for (const edge of map.edges) {
+    if (!renderedNodeIds.has(edge.source) || !renderedNodeIds.has(edge.target)) {
+      continue;
+    }
+
+    graphEdges.push({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      type: "bezier",
+      label: edge.relationship.replaceAll("_", " "),
+      labelStyle: {
+        fill: "#5f564b",
+        fontWeight: 700,
+        fontSize: 11,
+        textTransform: "uppercase"
+      },
+      labelBgPadding: [6, 3],
+      labelBgBorderRadius: 999,
+      labelBgStyle: {
+        fill: "rgba(255, 252, 247, 0.96)",
+        stroke: "rgba(64, 49, 31, 0.08)"
+      },
+      style: {
+        stroke: edgeColor(edge.relationship),
+        strokeWidth: 2.5
+      },
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: edgeColor(edge.relationship)
+      },
+      data: {
+        explanation: edge.explanation
+      }
+    });
+  }
+
+  return {
+    nodes: graphNodes,
+    edges: graphEdges
+  };
+}
+
+function buildNodeLabel(data: MindMapData): React.JSX.Element {
+  if (data.kind === "section") {
+    return (
+      <article className="mind-node mind-node--section">
+        <span className="section-kicker">Section {data.order + 1}</span>
+        <h4>{data.title}</h4>
+        <p>{data.summary}</p>
+        <ul className="section-stats">
+          <li>{formatCount("claim", data.claimCount)}</li>
+          <li>{formatCount("detail node", data.detailCount)}</li>
+        </ul>
+      </article>
+    );
+  }
+
+  return (
+    <article className={`mind-node mind-node--${data.node.type}`}>
+      <span className="node-type">{nodeTypeLabels[data.node.type]}</span>
+      <h4>{data.node.label}</h4>
+      <p>{data.node.summary}</p>
+      <details className="node-evidence">
+        <summary>Transcript evidence</summary>
+        <blockquote>{data.node.transcriptSpan.excerpt}</blockquote>
+      </details>
+      <div className="node-meta">
+        {typeof data.node.confidence === "number" ? (
+          <span>{Math.round(data.node.confidence * 100)}% confidence</span>
+        ) : null}
+        {data.node.isInferred ? <span>Inferred</span> : null}
+      </div>
+    </article>
+  );
+}
+
+function TranscriptEvidencePanel({
+  node
+}: {
+  node: TranscriptMapNode | null;
+}): React.JSX.Element {
+  if (!node) {
+    return (
+      <aside className="evidence-panel evidence-panel--empty">
+        <p className="panel-kicker">Transcript evidence</p>
+        <h3>Select a node</h3>
+        <p>
+          Click any thesis, claim, evidence, example, counterpoint, or conclusion node to inspect
+          its grounding in the transcript.
+        </p>
+      </aside>
+    );
+  }
+
+  const hasCharRange =
+    typeof node.transcriptSpan.startChar === "number" &&
+    typeof node.transcriptSpan.endChar === "number";
+
+  return (
+    <aside className="evidence-panel">
+      <p className="panel-kicker">Transcript evidence</p>
+      <h3>{node.label}</h3>
+      <div className="evidence-fields">
+        <div className="evidence-field">
+          <span>Node label</span>
+          <p>{node.label}</p>
+        </div>
+        <div className="evidence-field">
+          <span>Node summary</span>
+          <p>{node.summary}</p>
+        </div>
+        <div className="evidence-field">
+          <span>Type</span>
+          <p>{nodeTypeLabels[node.type]}</p>
+        </div>
+        <div className="evidence-field">
+          <span>Related transcript excerpt</span>
+          <blockquote className="evidence-quote">{node.transcriptSpan.excerpt}</blockquote>
+        </div>
+        {hasCharRange ? (
+          <div className="evidence-field">
+            <span>Character span</span>
+            <p>
+              {node.transcriptSpan.startChar}-{node.transcriptSpan.endChar}
+            </p>
+          </div>
+        ) : null}
+      </div>
+      <div className="node-meta">
+        {typeof node.confidence === "number" ? (
+          <span>{Math.round(node.confidence * 100)}% confidence</span>
+        ) : null}
+        {node.isInferred ? <span>Inferred node</span> : null}
+      </div>
+    </aside>
+  );
+}
+
+function GraphView({
+  map,
+  selectedNodeId,
+  onSelectNode
+}: {
+  map: TranscriptMap;
+  selectedNodeId: string | null;
+  onSelectNode: (nodeId: string) => void;
+}): React.JSX.Element {
+  const graph = buildMindMap(map);
+  const viewportHeight = Math.max(720, Math.min(920, 460 + map.nodes.length * 24));
+  const selectedNode =
+    map.nodes.find((node) => node.id === selectedNodeId) ??
+    map.nodes.find((node) => node.id === map.thesisNodeId) ??
+    null;
+
+  return (
+    <>
+      <div className="graph-head">
+        <h3>Mind map view</h3>
+        <p>
+          Click a node to inspect its evidence panel. Thesis anchors the top, sections form the
+          main lane, claims sit underneath, and supporting detail hangs below them.
+        </p>
+      </div>
+
+      <div className="graph-workspace">
+        <div className="graph-stage" style={{ height: `${viewportHeight}px` }}>
+          <ReactFlow
+            fitView
+            fitViewOptions={{ padding: 0.2 }}
+            nodes={graph.nodes.map((node) => {
+              const isSelected =
+                node.data.kind === "content" && node.data.node.id === selectedNode?.id;
+
+              return {
+                ...node,
+                className: `${node.className ?? ""}${isSelected ? " mind-node-shell--selected" : ""}`,
+                data: {
+                  ...node.data,
+                  label: buildNodeLabel(node.data)
+                }
+              };
+            })}
+            edges={graph.edges}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable
+            onNodeClick={(_, node) => {
+              const data = node.data as MindMapData;
+
+              if (data.kind === "content") {
+                onSelectNode(data.node.id);
+              }
+            }}
+            proOptions={{ hideAttribution: true }}
+          >
+            <MiniMap
+              pannable
+              zoomable
+              nodeColor={(node) => {
+                const data = node.data as MindMapData;
+                if (data.kind === "section") {
+                  return "#f2dfca";
+                }
+
+                return edgeColor(
+                  data.node.type === "thesis"
+                    ? "contains"
+                    : data.node.type === "conclusion"
+                      ? "explains"
+                      : data.node.type === "counterpoint"
+                        ? "contrasts"
+                        : data.node.type === "evidence" || data.node.type === "example"
+                          ? "supports"
+                          : "leads_to"
+                );
+              }}
+            />
+            <Controls showInteractive={false} />
+            <Background gap={24} size={1.2} />
+          </ReactFlow>
+        </div>
+
+        <TranscriptEvidencePanel node={selectedNode} />
+      </div>
+    </>
+  );
+}
+
+function App(): React.JSX.Element {
+  const [transcript, setTranscript] = useState(starterTranscript);
+  const [map, setMap] = useState<TranscriptMap | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const normalizedTranscript = transcript.trim();
+
+    if (!normalizedTranscript) {
+      setError("Paste a transcript before submitting.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+    setStatus("Extracting structure from the transcript...");
+
+    try {
+      const response = await fetch("/api/transcript-map", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          transcript: normalizedTranscript
+        })
+      });
+
+      const payload = (await response.json()) as MapApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && typeof payload.error === "string"
+            ? payload.error
+            : "Something went wrong while building the graph."
+        );
+      }
+
+      setStatus("Transcript graph extracted.");
+      setSelectedNodeId(payload.data.thesisNodeId);
+      startTransition(() => {
+        setMap(payload.data);
+      });
+    } catch (submitError: unknown) {
+      setError(submitError instanceof Error ? submitError.message : "Unexpected error.");
+      setStatus("");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  return (
+    <>
+      <section className="hero">
+        <p className="eyebrow">Transcript to graph</p>
+        <h1>Paste text. Render the first mind map.</h1>
+        <p className="hero-copy">
+          This version proves the AI output can become a usable visual object: React Flow renders
+          the graph, and D3 lays out the structure into a readable first-pass map.
+        </p>
+      </section>
+
+      <section className="panel composer">
+        <form onSubmit={handleSubmit}>
+          <label htmlFor="transcript-input">
+            Transcript
+            <span className="label-note">
+              Paste plain text. The server will call OpenAI, validate the schema, and return a
+              transcript map.
+            </span>
+          </label>
+          <textarea
+            id="transcript-input"
+            name="transcript"
+            placeholder="Paste a transcript here..."
+            spellCheck={false}
+            value={transcript}
+            onChange={(event) => {
+              setTranscript(event.target.value);
+            }}
+            disabled={isLoading}
+          />
+          <p className="hint">
+            This app uses the server-side <code>OPENAI_API_KEY</code>. Signing into ChatGPT in a
+            browser does not authenticate API requests for this project.
+          </p>
+          <div className="controls">
+            <button id="submit-button" type="submit" disabled={isLoading}>
+              {isLoading ? "Building graph..." : "Build graph"}
+            </button>
+            <p className="status" role="status" hidden={!status}>
+              {status}
+            </p>
+            <p className="error" role="alert" hidden={!error}>
+              {error}
+            </p>
+          </div>
+        </form>
+      </section>
+
+      {map ? (
+        <section className="panel result">
+          <div className="result-head">
+            <h2>{map.title}</h2>
+            <p className="hero-copy">{map.summary}</p>
+            <div className="result-meta">
+              <span className="pill">{formatCount("section", map.sections.length)}</span>
+              <span className="pill">{formatCount("node", map.nodes.length)}</span>
+              <span className="pill">{formatCount("edge", map.edges.length)}</span>
+              <span className="pill">{map.source.transcriptLengthChars} chars</span>
+            </div>
+          </div>
+
+          <GraphView map={map} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId} />
+
+          <section className="edge-summary">
+            <h3>Extracted relationships</h3>
+            <ul className="edge-list">
+              {map.edges.length > 0 ? (
+                map.edges.map((edge) => {
+                  const sourceLabel = map.nodes.find((node) => node.id === edge.source)?.label ?? edge.source;
+                  const targetLabel = map.nodes.find((node) => node.id === edge.target)?.label ?? edge.target;
+
+                  return (
+                    <li key={edge.id}>
+                      <strong>{sourceLabel}</strong>{" "}
+                      <span>
+                        {edge.relationship} -&gt; {targetLabel}
+                      </span>{" "}
+                      {edge.explanation ? <span>{edge.explanation}</span> : null}
+                    </li>
+                  );
+                })
+              ) : (
+                <li>
+                  <span>No explicit edges were returned for this transcript.</span>
+                </li>
+              )}
+            </ul>
+          </section>
+
+          <details className="json-card">
+            <summary>Raw JSON</summary>
+            <pre>{JSON.stringify(map, null, 2)}</pre>
+          </details>
+        </section>
+      ) : null}
+    </>
+  );
+}
+
+const rootElement = document.getElementById("app-root");
+
+if (!rootElement) {
+  throw new Error("Unable to find app root.");
+}
+
+createRoot(rootElement).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);

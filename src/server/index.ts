@@ -1,4 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import { extractTranscriptMap } from "../core/services/extract-transcript-map.js";
 import { renderAppPage } from "../web/page.js";
@@ -42,6 +44,57 @@ function sendJson(
     "Cache-Control": "no-store"
   });
   response.end(JSON.stringify(payload));
+}
+
+function contentTypeForAsset(pathname: string): string {
+  if (pathname.endsWith(".css")) {
+    return "text/css; charset=utf-8";
+  }
+
+  if (pathname.endsWith(".js")) {
+    return "text/javascript; charset=utf-8";
+  }
+
+  if (pathname.endsWith(".map")) {
+    return "application/json; charset=utf-8";
+  }
+
+  return "application/octet-stream";
+}
+
+async function sendAsset(response: ServerResponse, pathname: string): Promise<void> {
+  const assetName = pathname.replace(/^\/assets\//u, "");
+
+  if (!assetName || assetName.includes("..")) {
+    sendJson(response, 404, {
+      ok: false,
+      error: "Asset not found."
+    });
+    return;
+  }
+
+  try {
+    const assetBuffer = await readFile(resolve(process.cwd(), "dist", "public", assetName));
+
+    response.writeHead(200, {
+      "Content-Type": contentTypeForAsset(pathname),
+      "Cache-Control": "no-store"
+    });
+    response.end(assetBuffer);
+  } catch (error: unknown) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      sendJson(response, 404, {
+        ok: false,
+        error: "Asset not found."
+      });
+      return;
+    }
+
+    sendJson(response, 500, {
+      ok: false,
+      error: "Unable to read static asset."
+    });
+  }
 }
 
 async function readRequestBody(request: IncomingMessage): Promise<string> {
@@ -132,6 +185,11 @@ async function routeRequest(
 
   if (method === "GET" && url.pathname === "/") {
     sendHtml(response, renderAppPage());
+    return;
+  }
+
+  if (method === "GET" && url.pathname.startsWith("/assets/")) {
+    await sendAsset(response, url.pathname);
     return;
   }
 
