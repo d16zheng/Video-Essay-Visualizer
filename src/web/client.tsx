@@ -1,4 +1,4 @@
-import React, { startTransition, useState } from "react";
+import React, { startTransition, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Background,
@@ -21,6 +21,12 @@ import type {
   TranscriptMapNodeType,
   TranscriptMapSection
 } from "../core/schema/transcript-map.js";
+import type {
+  NodePositionOverride,
+  NodePositionOverrides,
+  ProjectSummary,
+  SavedProject
+} from "../core/schema/project.js";
 
 type SectionNodeData = {
   kind: "section";
@@ -53,17 +59,30 @@ type MapApiResponse =
       error?: string;
     };
 
+type ProjectsApiResponse =
+  | {
+      ok: true;
+      data: ProjectSummary[];
+    }
+  | {
+      ok: false;
+      error?: string;
+    };
+
+type ProjectApiResponse =
+  | {
+      ok: true;
+      data: SavedProject;
+    }
+  | {
+      ok: false;
+      error?: string;
+    };
+
 type TreeBranch = {
   id: string;
   children: TreeBranch[];
 };
-
-type NodePositionOverride = {
-  x: number;
-  y: number;
-};
-
-type NodePositionOverrides = Record<string, NodePositionOverride>;
 
 const starterTranscript = `Section 1: Why creativity often feels blocked.
 Most people think they lack ideas, but the real problem is usually fear of producing bad work. The first claim is that perfectionism shuts down experimentation before it starts. One example is the student who waits for inspiration instead of drafting early. Evidence for this comes from repeated creative routines: people who make something daily generate more usable ideas over time.
@@ -93,12 +112,27 @@ const nodeTypeLabels: Record<TranscriptMapNodeType, string> = {
   conclusion: "Conclusion"
 };
 
+const projectDateFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short"
+});
+
 function formatCount(label: string, value: number): string {
   return `${value} ${label}${value === 1 ? "" : "s"}`;
 }
 
 function edgeColor(relationship: TranscriptMapEdgeRelationship | "helper"): string {
   return edgePalette[relationship];
+}
+
+function formatProjectUpdatedAt(value: string): string {
+  return projectDateFormatter.format(new Date(value));
+}
+
+function isPersistenceUnavailableError(message: string): boolean {
+  return (
+    message.includes("Persistence is unavailable") || message.includes("DATABASE_URL is not configured")
+  );
 }
 
 function getEditableNodeTypes(node: TranscriptMapNode, thesisNodeId: string): TranscriptMapNodeType[] {
@@ -534,8 +568,8 @@ function TranscriptEvidencePanel({
         <p className="panel-kicker">Node editor</p>
         <h3>{node.label}</h3>
         <p className="editor-note">
-          Rename, rewrite, retype, delete, or drag this node. These edits only affect the current
-          local browser session.
+          Rename, rewrite, retype, delete, or drag this node. Save the project when you want to
+          keep these edits beyond the current session.
         </p>
       </div>
 
@@ -731,16 +765,229 @@ function GraphView({
   );
 }
 
+function ProjectLibrary({
+  projects,
+  activeProjectId,
+  isLoadingProjects,
+  openingProjectId,
+  persistenceUnavailableReason,
+  projectsError,
+  onOpenProject
+}: {
+  projects: ProjectSummary[];
+  activeProjectId: string | null;
+  isLoadingProjects: boolean;
+  openingProjectId: string | null;
+  persistenceUnavailableReason: string;
+  projectsError: string;
+  onOpenProject: (projectId: string) => void;
+}): React.JSX.Element {
+  return (
+    <aside className="panel project-library">
+      <div className="library-head">
+        <p className="panel-kicker">Projects</p>
+        <h2>Saved maps</h2>
+        <p className="hero-copy">
+          Persist the transcript, graph JSON, and layout so a useful map is easy to reopen later.
+        </p>
+      </div>
+
+      {persistenceUnavailableReason ? (
+        <p className="hint">{persistenceUnavailableReason}</p>
+      ) : projectsError ? (
+        <p className="error" role="alert">
+          {projectsError}
+        </p>
+      ) : projects.length === 0 ? (
+        <p className="hint">
+          {isLoadingProjects
+            ? "Loading saved projects..."
+            : "No saved projects yet. Save the first map that feels worth keeping."}
+        </p>
+      ) : (
+        <ul className="project-list">
+          {projects.map((project) => {
+            const isActive = project.id === activeProjectId;
+            const isOpening = project.id === openingProjectId;
+
+            return (
+              <li key={project.id}>
+                <button
+                  className={`project-card${isActive ? " project-card--active" : ""}`}
+                  type="button"
+                  onClick={() => {
+                    onOpenProject(project.id);
+                  }}
+                  disabled={isOpening}
+                >
+                  <div className="project-card-head">
+                    <strong>{project.title}</strong>
+                    <span>{isOpening ? "Opening..." : formatProjectUpdatedAt(project.updatedAt)}</span>
+                  </div>
+                  <p>{project.summary}</p>
+                  <p className="project-card-preview">{project.transcriptPreview}</p>
+                  <div className="project-card-meta">
+                    <span>{formatCount("section", project.sectionCount)}</span>
+                    <span>{formatCount("node", project.nodeCount)}</span>
+                    <span>{formatCount("edge", project.edgeCount)}</span>
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </aside>
+  );
+}
+
 function App(): React.JSX.Element {
   const [transcript, setTranscript] = useState(starterTranscript);
+  const [mapTranscript, setMapTranscript] = useState(starterTranscript);
   const [map, setMap] = useState<TranscriptMap | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [positionOverrides, setPositionOverrides] = useState<NodePositionOverrides>({});
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projectsError, setProjectsError] = useState("");
+  const [persistenceUnavailableReason, setPersistenceUnavailableReason] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [isSavingProject, setIsSavingProject] = useState(false);
+  const [openingProjectId, setOpeningProjectId] = useState<string | null>(null);
 
   const selectedNode = map ? resolveSelectedNode(map, selectedNodeId) : null;
+  const transcriptDraftChanged = map !== null && transcript.trim() !== mapTranscript.trim();
+
+  useEffect(() => {
+    void loadProjects();
+  }, []);
+
+  async function loadProjects(options?: { silent?: boolean }): Promise<void> {
+    if (!options?.silent) {
+      setIsLoadingProjects(true);
+    }
+
+    setProjectsError("");
+
+    try {
+      const response = await fetch("/api/projects");
+      const payload = (await response.json()) as ProjectsApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && typeof payload.error === "string"
+            ? payload.error
+            : "Unable to load saved projects."
+        );
+      }
+
+      setProjects(payload.data);
+      setPersistenceUnavailableReason("");
+    } catch (loadError: unknown) {
+      const message =
+        loadError instanceof Error ? loadError.message : "Unable to load saved projects.";
+
+      if (isPersistenceUnavailableError(message)) {
+        setPersistenceUnavailableReason(message);
+        setProjects([]);
+      } else {
+        setProjectsError(message);
+      }
+    } finally {
+      setIsLoadingProjects(false);
+    }
+  }
+
+  function hydrateProject(project: SavedProject): void {
+    setTranscript(project.transcript);
+    setMapTranscript(project.transcript);
+    setPositionOverrides(project.positionOverrides);
+    setSelectedNodeId(project.selectedNodeId ?? project.map.thesisNodeId);
+    setActiveProjectId(project.id);
+    startTransition(() => {
+      setMap(project.map);
+    });
+  }
+
+  async function handleOpenProject(projectId: string): Promise<void> {
+    setOpeningProjectId(projectId);
+    setError("");
+    setStatus("Opening saved project...");
+
+    try {
+      const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`);
+      const payload = (await response.json()) as ProjectApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && typeof payload.error === "string" ? payload.error : "Unable to open project."
+        );
+      }
+
+      hydrateProject(payload.data);
+      setStatus(`Reopened "${payload.data.title}".`);
+    } catch (openError: unknown) {
+      const message = openError instanceof Error ? openError.message : "Unable to open project.";
+      setError(message);
+      setStatus("");
+
+      if (isPersistenceUnavailableError(message)) {
+        setPersistenceUnavailableReason(message);
+      }
+    } finally {
+      setOpeningProjectId(null);
+    }
+  }
+
+  async function handleSaveProject(): Promise<void> {
+    if (!map) {
+      return;
+    }
+
+    setIsSavingProject(true);
+    setError("");
+    setStatus(activeProjectId ? "Saving project updates..." : "Saving project...");
+
+    try {
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          id: activeProjectId,
+          transcript: mapTranscript,
+          map,
+          positionOverrides,
+          selectedNodeId
+        })
+      });
+      const payload = (await response.json()) as ProjectApiResponse;
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(
+          !payload.ok && typeof payload.error === "string" ? payload.error : "Unable to save project."
+        );
+      }
+
+      hydrateProject(payload.data);
+      await loadProjects({ silent: true });
+      setStatus(`Saved "${payload.data.title}".`);
+    } catch (saveError: unknown) {
+      const message = saveError instanceof Error ? saveError.message : "Unable to save project.";
+      setError(message);
+      setStatus("");
+
+      if (isPersistenceUnavailableError(message)) {
+        setPersistenceUnavailableReason(message);
+      }
+    } finally {
+      setIsSavingProject(false);
+    }
+  }
 
   function updateSelectedNode(
     updater: (node: TranscriptMapNode) => TranscriptMapNode
@@ -800,6 +1047,8 @@ function App(): React.JSX.Element {
       }
 
       setStatus("Transcript graph extracted.");
+      setActiveProjectId(null);
+      setMapTranscript(normalizedTranscript);
       setPositionOverrides({});
       setSelectedNodeId(payload.data.thesisNodeId);
       startTransition(() => {
@@ -819,54 +1068,94 @@ function App(): React.JSX.Element {
         <p className="eyebrow">Transcript to graph</p>
         <h1>Paste text. Render the first mind map.</h1>
         <p className="hero-copy">
-          This version proves the AI output can become a usable visual object: React Flow renders
-          the graph, and D3 lays out the structure into a readable first-pass map.
+          This version turns the core flow into something you can keep using: React Flow renders
+          the graph, D3 lays it out, and useful maps can now be saved and reopened.
         </p>
       </section>
 
-      <section className="panel composer">
-        <form onSubmit={handleSubmit}>
-          <label htmlFor="transcript-input">
-            Transcript
-            <span className="label-note">
-              Paste plain text. The server will call OpenAI, validate the schema, and return a
-              transcript map.
-            </span>
-          </label>
-          <textarea
-            id="transcript-input"
-            name="transcript"
-            placeholder="Paste a transcript here..."
-            spellCheck={false}
-            value={transcript}
-            onChange={(event) => {
-              setTranscript(event.target.value);
-            }}
-            disabled={isLoading}
-          />
-          <p className="hint">
-            This app uses the server-side <code>OPENAI_API_KEY</code>. Signing into ChatGPT in a
-            browser does not authenticate API requests for this project.
-          </p>
-          <div className="controls">
-            <button id="submit-button" type="submit" disabled={isLoading}>
-              {isLoading ? "Building graph..." : "Build graph"}
-            </button>
-            <p className="status" role="status" hidden={!status}>
-              {status}
+      <section className="workspace-grid">
+        <section className="panel composer">
+          <form onSubmit={handleSubmit}>
+            <label htmlFor="transcript-input">
+              Transcript
+              <span className="label-note">
+                Paste plain text. The server will call OpenAI, validate the schema, and return a
+                transcript map.
+              </span>
+            </label>
+            <textarea
+              id="transcript-input"
+              name="transcript"
+              placeholder="Paste a transcript here..."
+              spellCheck={false}
+              value={transcript}
+              onChange={(event) => {
+                setTranscript(event.target.value);
+              }}
+              disabled={isLoading}
+            />
+            <p className="hint">
+              This app uses the server-side <code>OPENAI_API_KEY</code>. Signing into ChatGPT in a
+              browser does not authenticate API requests for this project.
             </p>
-            <p className="error" role="alert" hidden={!error}>
-              {error}
-            </p>
-          </div>
-        </form>
+            {transcriptDraftChanged ? (
+              <p className="hint">
+                The composer text no longer matches the open map. Build a new graph to analyze this
+                draft, or save to preserve the currently open project state.
+              </p>
+            ) : null}
+            <div className="controls">
+              <button id="submit-button" type="submit" disabled={isLoading}>
+                {isLoading ? "Building graph..." : "Build graph"}
+              </button>
+              <p className="status" role="status" hidden={!status}>
+                {status}
+              </p>
+              <p className="error" role="alert" hidden={!error}>
+                {error}
+              </p>
+            </div>
+          </form>
+        </section>
+
+        <ProjectLibrary
+          projects={projects}
+          activeProjectId={activeProjectId}
+          isLoadingProjects={isLoadingProjects}
+          openingProjectId={openingProjectId}
+          persistenceUnavailableReason={persistenceUnavailableReason}
+          projectsError={projectsError}
+          onOpenProject={handleOpenProject}
+        />
       </section>
 
       {map ? (
         <section className="panel result">
           <div className="result-head">
-            <h2>{map.title}</h2>
-            <p className="hero-copy">{map.summary}</p>
+            <div className="result-head-row">
+              <div>
+                <h2>{map.title}</h2>
+                <p className="hero-copy">{map.summary}</p>
+              </div>
+              <div className="result-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleSaveProject();
+                  }}
+                  disabled={isSavingProject || Boolean(persistenceUnavailableReason)}
+                >
+                  {isSavingProject
+                    ? "Saving..."
+                    : activeProjectId
+                      ? "Save project"
+                      : "Save as project"}
+                </button>
+                <span className="pill pill--muted">
+                  {activeProjectId ? "Saved project" : "Unsaved session"}
+                </span>
+              </div>
+            </div>
             <div className="result-meta">
               <span className="pill">{formatCount("section", map.sections.length)}</span>
               <span className="pill">{formatCount("node", map.nodes.length)}</span>

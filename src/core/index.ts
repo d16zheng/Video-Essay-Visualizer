@@ -17,6 +17,23 @@ export type {
   TranscriptMapSection
 } from "./schema/transcript-map.js";
 export {
+  nodePositionOverrideSchema,
+  nodePositionOverridesSchema,
+  parseProjectSaveInput,
+  parseProjectSummary,
+  parseSavedProject,
+  projectSaveInputSchema,
+  projectSummarySchema,
+  savedProjectSchema
+} from "./schema/project.js";
+export type {
+  NodePositionOverride,
+  NodePositionOverrides,
+  ProjectSaveInput,
+  ProjectSummary,
+  SavedProject
+} from "./schema/project.js";
+export {
   buildTranscriptMapSystemPrompt,
   buildTranscriptMapUserPrompt
 } from "./prompts/transcript-map.js";

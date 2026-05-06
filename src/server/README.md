@@ -1,3 +1,8 @@
 # Server
 
-Reserved for HTTP/API entrypoints, request handlers, persistence, and background orchestration around the core transcript-mapping engine.
+HTTP entrypoints for:
+
+- transcript extraction
+- saved project list/load/save APIs
+- optional basic-auth protection
+- PostgreSQL/Supabase-backed persistence around the core transcript-mapping engine

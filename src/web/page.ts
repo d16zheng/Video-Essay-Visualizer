@@ -76,8 +76,30 @@ h1 {
   backdrop-filter: blur(14px);
 }
 
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(300px, 0.9fr);
+  gap: 18px;
+  align-items: start;
+}
+
 .composer {
   padding: 24px;
+}
+
+.project-library {
+  display: grid;
+  gap: 18px;
+  padding: 24px;
+}
+
+.library-head {
+  display: grid;
+  gap: 8px;
+}
+
+.library-head h2 {
+  margin: 0;
 }
 
 form {
@@ -173,6 +195,19 @@ button:disabled {
   margin-bottom: 18px;
 }
 
+.result-head-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+}
+
+.result-actions {
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
 .result-head h2,
 .thesis-card h3,
 .graph-head h3,
@@ -194,6 +229,11 @@ button:disabled {
   background: rgba(217, 106, 56, 0.1);
   color: var(--highlight-strong);
   font-weight: 700;
+}
+
+.pill--muted {
+  background: rgba(64, 49, 31, 0.08);
+  color: var(--muted);
 }
 
 .thesis-card {
@@ -420,6 +460,66 @@ button:disabled {
   line-height: 1.55;
 }
 
+.project-list {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.project-card {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  text-align: left;
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(64, 49, 31, 0.12);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.project-card:hover:not(:disabled) {
+  box-shadow: 0 12px 26px rgba(56, 42, 28, 0.1);
+}
+
+.project-card--active {
+  border-color: rgba(217, 106, 56, 0.36);
+  box-shadow:
+    0 12px 26px rgba(56, 42, 28, 0.08),
+    0 0 0 3px rgba(217, 106, 56, 0.12);
+}
+
+.project-card-head,
+.project-card-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.project-card-head strong {
+  font-size: 1rem;
+}
+
+.project-card p,
+.project-card strong {
+  margin: 0;
+}
+
+.project-card-head span,
+.project-card-meta span,
+.project-card p {
+  color: var(--muted);
+}
+
+.project-card-preview {
+  padding-top: 2px;
+  font-size: 0.92rem;
+}
+
 .react-flow__renderer,
 .react-flow__pane {
   cursor: grab;
@@ -518,6 +618,21 @@ button:disabled {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+@media (max-width: 1024px) {
+  .workspace-grid,
+  .graph-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .result-head-row {
+    flex-direction: column;
+  }
+
+  .result-actions {
+    justify-items: start;
+  }
 }
 
 .section-kicker {

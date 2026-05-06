@@ -1,122 +1,100 @@
 # Visualize Transcript
 
-Schema-first TypeScript MVP infrastructure for turning a written transcript into a structured story graph that can later power a dashboard, mind map, or argument map UI.
+Turn a written transcript into a validated story graph and inspect it in a small local web app.
 
-The first milestone here is deliberately narrow:
+This project uses OpenAI structured output to extract:
 
-- take a written transcript
-- extract a thesis, sections, claims, evidence, examples, counterpoints, and conclusion
-- validate that output against a strict schema
-- make the result easy to render in a frontend later
+- a thesis
+- sections
+- claims, evidence, examples, counterpoints, and conclusions
+- grounded transcript excerpts for every node
 
-This version uses OpenAI as the LLM provider, with `gpt-5-mini` as the default model for transcript extraction.
+## What it does
 
-## MVP focus
+- validates output against a single Zod schema
+- renders the result as a React Flow mind map
+- lets you inspect transcript evidence per node
+- supports basic node edits and dragging
+- can save and reopen projects when `DATABASE_URL` is set
 
-The current codebase is intentionally centered on the first product loop:
+## Setup
 
-1. Define a stable output schema.
-2. Ask an LLM to produce only that shape.
-3. Validate the response before any UI touches it.
-4. Let a user paste transcript text into a tiny web app and inspect the returned graph.
-5. Render that validated output as a first-pass mind map with grounded inspection and basic correction tools.
+1. Install dependencies:
 
-That gives you a clean contract for the next steps:
-
-- save/load projects
-- richer graph rendering with React Flow or Cytoscape
-- better graph editing ergonomics
-
-## Current browser capabilities
-
-The local browser app now supports:
-
-- transcript-to-graph extraction through the local server
-- a React Flow mind map with D3-based initial layout
-- a click-to-inspect node editor and transcript evidence panel
-- inline node correction for label, summary, and safe type changes
-- deleting non-thesis nodes
-- dragging nodes to adjust layout locally in the current session
-- raw JSON inspection of the edited in-memory graph
-
-What it still does not do:
-
-- persist projects to disk, a database, or `localStorage`
-- support collaborative editing
-- provide full edge editing or advanced graph authoring
-
-## What is in this scaffold
-
-```text
-src/
-  cli.ts                         # Run extraction against a local transcript file
-  index.ts                       # Public exports
-  core/
-    config.ts                    # Shared constants
-    prompts/
-      transcript-map.ts          # System and user prompts
-    schema/
-      transcript-map.ts          # Zod schema, types, JSON schema, invariants
-    services/
-      analyze-transcript.ts      # Explicit AI analysis pipeline with diagnostics
-      extract-transcript-map.ts  # OpenAI call + parsing + validation
-    utils/
-      json.ts                    # Defensive JSON parsing helper
-  server/
-    index.ts                     # Tiny HTTP server for the paste-to-graph flow
-  web/
-    client.tsx                   # React app with React Flow + D3 layout
-    page.ts                      # HTML shell and app styling
-scripts/
-  build-web.mjs                  # Bundles the browser app with esbuild
+```bash
+npm install
 ```
 
-`src/core/schema/transcript-map.ts` is the only authoritative schema definition. Anything under `dist/` is generated build output and should not be treated as a second source of truth.
+2. Create your env file:
+
+```bash
+cp .env.example .env
+```
+
+3. Add your API key:
+
+```bash
+OPENAI_API_KEY=your_key_here
+OPENAI_MODEL=gpt-5-mini
+```
+
+Optional:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/visualize_transcript
+DATABASE_SSL=require
+BASIC_AUTH_USERNAME=admin
+BASIC_AUTH_PASSWORD=change-me
+```
+
+Notes:
+
+- `OPENAI_MODEL` defaults to `gpt-5-mini`.
+- ChatGPT subscriptions do not include API billing.
+- If `DATABASE_URL` is missing, extraction still works but save/load endpoints are unavailable.
+
+## Run
+
+Start the local app:
+
+```bash
+npm run dev
+```
+
+Then open [http://127.0.0.1:3000](http://127.0.0.1:3000).
+
+Production-style run:
+
+```bash
+npm run serve
+```
+
+CLI extraction:
+
+```bash
+npm run extract -- ./transcript.txt "My Video Essay"
+```
+
+## Useful scripts
+
+```bash
+npm run dev
+npm run extract -- ./transcript.txt
+npm run typecheck
+npm run build
+npm run serve
+```
 
 ## Output shape
 
-The core object is a `TranscriptMap`.
+The core output is a `TranscriptMap` with `title`, `summary`, `thesisNodeId`, `sections`,
+`nodes`, `edges`, and `source`.
 
-It is designed as a hybrid of:
+Node types: `thesis`, `claim`, `evidence`, `example`, `counterpoint`, `conclusion`
 
-- a sectioned outline
-- an argument/story graph
+Edge relationships: `contains`, `supports`, `explains`, `contrasts`, `leads_to`, `concludes`
 
-Each output includes:
-
-- `title`
-- `summary`
-- `thesisNodeId`
-- `sections`
-- `nodes`
-- `edges`
-- `source`
-
-### Node types
-
-The allowed node types are:
-
-- `thesis`
-- `claim`
-- `evidence`
-- `example`
-- `counterpoint`
-- `conclusion`
-
-### Edge relationships
-
-The allowed edge relationships are:
-
-- `contains`
-- `supports`
-- `explains`
-- `contrasts`
-- `leads_to`
-- `concludes`
-
-### Grounding
-
-Every node must include a transcript excerpt:
+Every node includes a grounded transcript excerpt:
 
 ```ts
 transcriptSpan: {
@@ -126,178 +104,17 @@ transcriptSpan: {
 }
 ```
 
-This is important because the product should stay inspectable. The visualization should never feel like unsupported magic.
+`src/core/schema/transcript-map.ts` is the source of truth for the graph schema.
 
-## Why OpenAI
+## Limitations
 
-OpenAI is a strong fit for this schema-first pipeline because it gives you:
+- expects a written transcript as input
+- does not yet chunk very long transcripts
+- editing is still intentionally lightweight
+- there is no collaborative editing
 
-- native structured outputs with JSON schema
-- a reliable text-generation API for productionizing the extractor
-- a fast, lower-cost model tier in `gpt-5-mini`
+## OpenAI references
 
-This scaffold now defaults to:
-
-`gpt-5-mini`
-
-You can swap models later through `OPENAI_MODEL`.
-
-## Using a real OpenAI account
-
-This repo does not log into a ChatGPT browser session.
-
-It uses the OpenAI API directly from the server in `src/core/services/analyze-transcript.ts`, which sends a `POST` request to `https://api.openai.com/v1/responses` with `Authorization: Bearer ${OPENAI_API_KEY}`.
-
-To make that work with a real account:
-
-1. Sign into the API platform at `platform.openai.com`.
-2. Create an API key.
-3. Add billing to your API platform account if needed.
-4. Copy `.env.example` to `.env`.
-5. Set `OPENAI_API_KEY` and optionally `OPENAI_MODEL`.
-
-Important: ChatGPT subscriptions and API billing are managed separately. Having ChatGPT Plus or Pro does not automatically authenticate or fund API usage for this repo.
-
-## Setup
-
-1. Install dependencies
-
-```bash
-npm install
-```
-
-2. Create your environment file
-
-```bash
-cp .env.example .env
-```
-
-3. Add your OpenAI API key to `.env`
-
-```bash
-OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-5-mini
-```
-
-## Run the extractor
-
-Point the CLI at a plain text transcript file:
-
-```bash
-npm run extract -- ./transcript.txt "My Video Essay"
-```
-
-The script prints a validated `TranscriptMap` JSON object to stdout.
-
-## AI analysis pipeline
-
-The core now exposes two levels of API:
-
-- `extractTranscriptMap(...)` for the smallest "give me the final graph" flow
-- `analyzeTranscript(...)` for the full AI pipeline with stage timings and request diagnostics
-
-The pipeline stages are:
-
-1. `normalize_input`
-2. `build_prompt`
-3. `call_model`
-4. `parse_response`
-5. `validate_map`
-6. `finalize_result`
-
-That richer API is useful when you want to learn how the LLM flow works, debug failures, instrument latency, or later show step-by-step progress in the UI.
-
-```ts
-import { analyzeTranscript } from "./src/index.js";
-
-const analysis = await analyzeTranscript({
-  transcript: "Your transcript text here"
-});
-
-console.log(analysis.map);
-console.log(analysis.diagnostics.stages);
-```
-
-## Development notes
-
-### What the validator enforces
-
-The schema layer does more than check field types. It also enforces a few graph invariants:
-
-- exactly one thesis node must exist
-- `thesisNodeId` must point to that thesis node
-- every node must belong to a real section
-- every section's `nodeIds` must point to nodes that actually belong to that section
-- every edge must reference existing nodes
-- transcript spans cannot have `startChar > endChar`
-
-That matters because the frontend will be much easier to build once the graph contract is trustworthy.
-
-### Prompting philosophy
-
-The prompt intentionally biases toward:
-
-- fewer, higher-confidence nodes
-- section-level structure first
-- grounded excerpts on every node
-- only meaningful edges
-
-For an MVP, this is usually better than over-extracting every possible idea.
-
-## Recommended next build order
-
-Now that the schema layer and smallest browser flow exist, I would build the rest in this order:
-
-1. Save/load projects
-2. Edge creation and deletion
-3. Section editing and node creation
-4. Better long-transcript handling with chunking and merge logic
-5. Richer review and provenance tooling
-
-## Known limitations in this first scaffold
-
-- It assumes a written transcript already exists.
-- It does not yet chunk very long transcripts.
-- The browser graph is intentionally minimal and custom-built, not yet a full editor-grade graph UI.
-- It does not yet persist projects, so refreshes and rebuilds reset the current graph state.
-- Character offsets are optional because many models are weak at precise span indexing in a single pass.
-
-## Useful scripts
-
-```bash
-npm run dev
-npm run serve
-npm run typecheck
-npm run build
-npm run extract -- ./transcript.txt
-```
-
-## Browser flow
-
-The current repo now includes the smallest possible browser loop for step 2:
-
-1. start the local server
-2. paste transcript text into the textarea
-3. submit to `POST /api/transcript-map`
-4. inspect the returned graph, click nodes to review transcript evidence, and make basic edits
-5. optionally inspect the edited in-memory graph in the raw JSON panel
-
-Important: those browser edits are local to the current session only. They are not saved anywhere permanent yet.
-
-Run it with:
-
-```bash
-npm run serve
-```
-
-Then open:
-
-```text
-http://127.0.0.1:3000
-```
-
-## Sources used for the OpenAI integration
-
-- [OpenAI GPT-5 mini model docs](https://platform.openai.com/docs/models/gpt-5-mini)
-- [OpenAI Responses API reference](https://platform.openai.com/docs/api-reference/responses/object)
-- [OpenAI structured outputs guide](https://platform.openai.com/docs/guides/structured-outputs)
+- [GPT-5 mini](https://platform.openai.com/docs/models/gpt-5-mini)
+- [Responses API](https://platform.openai.com/docs/api-reference/responses/object)
+- [Structured outputs](https://platform.openai.com/docs/guides/structured-outputs)
