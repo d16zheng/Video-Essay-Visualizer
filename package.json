@@ -5,6 +5,8 @@
   "type": "module",
   "description": "Schema-first MVP for turning written transcripts into structured story graphs.",
   "scripts": {
+    "clean": "node --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
+    "prebuild": "npm run clean",
     "build": "tsc --project tsconfig.json",
     "dev": "tsx --watch src/server/index.ts",
     "serve": "npm run build && node dist/server/index.js",
@@ -13,7 +15,6 @@
     "extract": "tsx src/cli.ts"
   },
   "dependencies": {
-    "together-ai": "^0.22.0",
     "zod": "^3.24.4"
   },
   "devDependencies": {

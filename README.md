@@ -9,7 +9,7 @@ The first milestone here is deliberately narrow:
 - validate that output against a strict schema
 - make the result easy to render in a frontend later
 
-This version uses Together AI as the LLM provider so the project stays lightweight and affordable for a personal build.
+This version uses OpenAI as the LLM provider, with `gpt-5-mini` as the default model for transcript extraction.
 
 ## MVP focus
 
@@ -40,7 +40,8 @@ src/
     schema/
       transcript-map.ts          # Zod schema, types, JSON schema, invariants
     services/
-      extract-transcript-map.ts  # Together API call + parsing + validation
+      analyze-transcript.ts      # Explicit AI analysis pipeline with diagnostics
+      extract-transcript-map.ts  # OpenAI call + parsing + validation
     utils/
       json.ts                    # Defensive JSON parsing helper
   server/
@@ -48,6 +49,8 @@ src/
   web/
     page.ts                      # Inline page HTML, CSS, and browser behavior
 ```
+
+`src/core/schema/transcript-map.ts` is the only authoritative schema definition. Anything under `dist/` is generated build output and should not be treated as a second source of truth.
 
 ## Output shape
 
@@ -104,22 +107,19 @@ transcriptSpan: {
 
 This is important because the product should stay inspectable. The visualization should never feel like unsupported magic.
 
-## Why Together AI
+## Why OpenAI
 
-Together is a practical fit for this personal-project phase because it gives you:
+OpenAI is a strong fit for this schema-first pipeline because it gives you:
 
-- access to strong open-weight chat models
-- a TypeScript SDK
-- JSON schema constrained responses
-- a lower-friction cost profile than starting with a more enterprise-heavy stack
+- native structured outputs with JSON schema
+- a reliable text-generation API for productionizing the extractor
+- a fast, lower-cost model tier in `gpt-5-mini`
 
-This scaffold defaults to:
+This scaffold now defaults to:
 
-`meta-llama/Llama-3.3-70B-Instruct-Turbo`
+`gpt-5-mini`
 
-That is a reasonable starting point because Together currently recommends it as a general serverless chat model, and Together's JSON mode docs support schema-constrained chat completions.
-
-You can swap models later through `TOGETHER_MODEL`.
+You can swap models later through `OPENAI_MODEL`.
 
 ## Setup
 
@@ -135,11 +135,11 @@ npm install
 cp .env.example .env
 ```
 
-3. Add your Together API key to `.env`
+3. Add your OpenAI API key to `.env`
 
 ```bash
-TOGETHER_API_KEY=your_key_here
-TOGETHER_MODEL=meta-llama/Llama-3.3-70B-Instruct-Turbo
+OPENAI_API_KEY=your_key_here
+OPENAI_MODEL=gpt-5-mini
 ```
 
 ## Run the extractor
@@ -151,6 +151,35 @@ npm run extract -- ./transcript.txt "My Video Essay"
 ```
 
 The script prints a validated `TranscriptMap` JSON object to stdout.
+
+## AI analysis pipeline
+
+The core now exposes two levels of API:
+
+- `extractTranscriptMap(...)` for the smallest "give me the final graph" flow
+- `analyzeTranscript(...)` for the full AI pipeline with stage timings and request diagnostics
+
+The pipeline stages are:
+
+1. `normalize_input`
+2. `build_prompt`
+3. `call_model`
+4. `parse_response`
+5. `validate_map`
+6. `finalize_result`
+
+That richer API is useful when you want to learn how the LLM flow works, debug failures, instrument latency, or later show step-by-step progress in the UI.
+
+```ts
+import { analyzeTranscript } from "./src/index.js";
+
+const analysis = await analyzeTranscript({
+  transcript: "Your transcript text here"
+});
+
+console.log(analysis.map);
+console.log(analysis.diagnostics.stages);
+```
 
 ## Development notes
 
@@ -227,9 +256,8 @@ Then open:
 http://127.0.0.1:3000
 ```
 
-## Sources used for the Together integration
+## Sources used for the OpenAI integration
 
-- [Together JSON mode docs](https://docs.together.ai/docs/json-mode)
-- [Together chat overview](https://docs.together.ai/docs/chat-overview)
-- [Together quickstart](https://docs.together.ai/docs/quickstart)
-- [Together serverless model recommendations](https://docs.together.ai/docs/inference-models)
+- [OpenAI GPT-5 mini model docs](https://platform.openai.com/docs/models/gpt-5-mini)
+- [OpenAI Responses API reference](https://platform.openai.com/docs/api-reference/responses/object)
+- [OpenAI structured outputs guide](https://platform.openai.com/docs/guides/structured-outputs)
