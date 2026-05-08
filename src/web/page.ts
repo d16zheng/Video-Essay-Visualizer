@@ -287,7 +287,9 @@ button:disabled {
   padding: 18px;
   border-radius: 22px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.76);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(251, 246, 239, 0.88));
+  box-shadow: 0 16px 34px rgba(70, 52, 34, 0.08);
 }
 
 .evidence-panel h3,
@@ -303,6 +305,50 @@ button:disabled {
 .panel-head {
   display: grid;
   gap: 8px;
+}
+
+.panel-node-type-row {
+  display: grid;
+  gap: 10px;
+}
+
+.panel-node-type {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(64, 49, 31, 0.08);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.panel-node-type--thesis {
+  background: rgba(217, 106, 56, 0.12);
+  color: #a1461d;
+}
+
+.panel-node-type--claim {
+  background: rgba(122, 92, 43, 0.12);
+  color: #7a5c2b;
+}
+
+.panel-node-type--evidence,
+.panel-node-type--example {
+  background: rgba(47, 125, 87, 0.12);
+  color: #27684a;
+}
+
+.panel-node-type--counterpoint {
+  background: rgba(157, 45, 50, 0.11);
+  color: #8f2f34;
+}
+
+.panel-node-type--conclusion {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2452b2;
 }
 
 .panel-kicker {
@@ -559,12 +605,12 @@ button:disabled {
 
 .mind-node {
   display: grid;
-  gap: 10px;
-  padding: 16px;
+  gap: 12px;
+  padding: 18px 18px 16px;
   border-radius: 22px;
   border: 1px solid rgba(64, 49, 31, 0.12);
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 14px 28px rgba(56, 42, 28, 0.1);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 14px 28px rgba(56, 42, 28, 0.08);
 }
 
 .mind-node h4,
@@ -575,34 +621,48 @@ button:disabled {
 }
 
 .mind-node-shell--selected .mind-node {
-  border-color: rgba(217, 106, 56, 0.42);
+  border-color: rgba(217, 106, 56, 0.5);
   box-shadow:
-    0 14px 28px rgba(56, 42, 28, 0.12),
-    0 0 0 3px rgba(217, 106, 56, 0.14);
+    0 18px 34px rgba(56, 42, 28, 0.14),
+    0 0 0 4px rgba(217, 106, 56, 0.16);
+  transform: translateY(-2px);
 }
 
 .mind-node--section {
-  gap: 12px;
-  min-height: 172px;
+  gap: 14px;
+  min-height: 176px;
   background: linear-gradient(180deg, rgba(255, 251, 246, 0.96), rgba(248, 239, 228, 0.92));
   border-color: rgba(184, 76, 28, 0.15);
 }
 
 .mind-node--thesis {
-  background: linear-gradient(180deg, rgba(255, 247, 241, 1), rgba(255, 239, 230, 1));
+  background: linear-gradient(180deg, rgba(255, 246, 238, 1), rgba(255, 236, 223, 1));
+  border-color: rgba(217, 106, 56, 0.26);
 }
 
-.mind-node--evidence,
+.mind-node--claim {
+  background: linear-gradient(180deg, rgba(252, 247, 238, 1), rgba(245, 236, 219, 1));
+  border-color: rgba(122, 92, 43, 0.18);
+}
+
+.mind-node--evidence {
+  background: linear-gradient(180deg, rgba(241, 250, 244, 1), rgba(229, 244, 235, 1));
+  border-color: rgba(47, 125, 87, 0.18);
+}
+
 .mind-node--example {
-  background: linear-gradient(180deg, rgba(241, 250, 244, 1), rgba(231, 245, 236, 1));
+  background: linear-gradient(180deg, rgba(239, 249, 243, 1), rgba(224, 241, 232, 1));
+  border-color: rgba(47, 125, 87, 0.16);
 }
 
 .mind-node--counterpoint {
-  background: linear-gradient(180deg, rgba(252, 244, 241, 1), rgba(247, 235, 230, 1));
+  background: linear-gradient(180deg, rgba(252, 243, 240, 1), rgba(247, 232, 227, 1));
+  border-color: rgba(157, 45, 50, 0.18);
 }
 
 .mind-node--conclusion {
-  background: linear-gradient(180deg, rgba(247, 248, 255, 1), rgba(236, 240, 252, 1));
+  background: linear-gradient(180deg, rgba(246, 248, 255, 1), rgba(233, 239, 252, 1));
+  border-color: rgba(37, 99, 235, 0.16);
 }
 
 .node-type,
@@ -642,6 +702,8 @@ button:disabled {
 
 .mind-node h4 {
   font-size: 1rem;
+  line-height: 1.28;
+  letter-spacing: -0.02em;
 }
 
 .mind-node p {
@@ -649,36 +711,20 @@ button:disabled {
   line-height: 1.5;
 }
 
-.node-evidence {
-  border-radius: 16px;
-  border: 1px solid rgba(64, 49, 31, 0.1);
-  background: rgba(255, 252, 247, 0.72);
+.node-summary {
+  display: -webkit-box;
   overflow: hidden;
-}
-
-.node-evidence summary {
-  padding: 10px 12px;
-  cursor: pointer;
-  color: var(--highlight-strong);
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.node-evidence blockquote {
-  margin: 0;
-  padding: 0 12px 12px 16px;
-  border-left: 3px solid rgba(217, 106, 56, 0.35);
-  color: var(--ink);
+  min-height: 4.5em;
   font-size: 0.94rem;
-  line-height: 1.48;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .node-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
 }
 
 .node-meta span {
@@ -686,7 +732,7 @@ button:disabled {
   border-radius: 999px;
   background: rgba(64, 49, 31, 0.08);
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   font-weight: 700;
 }
 

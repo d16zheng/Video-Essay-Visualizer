@@ -513,11 +513,7 @@ function buildNodeLabel(data: MindMapData): React.JSX.Element {
     <article className={`mind-node mind-node--${data.node.type}`}>
       <span className="node-type">{nodeTypeLabels[data.node.type]}</span>
       <h4>{data.node.label}</h4>
-      <p>{data.node.summary}</p>
-      <details className="node-evidence">
-        <summary>Transcript evidence</summary>
-        <blockquote>{data.node.transcriptSpan.excerpt}</blockquote>
-      </details>
+      <p className="node-summary">{data.node.summary}</p>
       <div className="node-meta">
         {typeof data.node.confidence === "number" ? (
           <span>{Math.round(data.node.confidence * 100)}% confidence</span>
@@ -566,6 +562,17 @@ function TranscriptEvidencePanel({
     <aside className="evidence-panel">
       <div className="panel-head">
         <p className="panel-kicker">Node editor</p>
+        <div className="panel-node-type-row">
+          <span className={`panel-node-type panel-node-type--${node.type}`}>
+            {nodeTypeLabels[node.type]}
+          </span>
+          <div className="node-meta">
+            {typeof node.confidence === "number" ? (
+              <span>{Math.round(node.confidence * 100)}% confidence</span>
+            ) : null}
+            {node.isInferred ? <span>Inferred node</span> : null}
+          </div>
+        </div>
         <h3>{node.label}</h3>
         <p className="editor-note">
           Rename, rewrite, retype, delete, or drag this node. Save the project when you want to
@@ -641,12 +648,6 @@ function TranscriptEvidencePanel({
             </p>
           </div>
         ) : null}
-      </div>
-      <div className="node-meta">
-        {typeof node.confidence === "number" ? (
-          <span>{Math.round(node.confidence * 100)}% confidence</span>
-        ) : null}
-        {node.isInferred ? <span>Inferred node</span> : null}
       </div>
     </aside>
   );
