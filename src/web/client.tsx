@@ -1,4 +1,4 @@
-import React, { startTransition, useEffect, useState } from "react";
+import React, { startTransition, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Background,
@@ -24,9 +24,12 @@ import type {
 import type {
   NodePositionOverride,
   NodePositionOverrides,
+  ProjectPage,
   ProjectSummary,
   SavedProject
 } from "../core/schema/project.js";
+import { projectSaveInputSchema } from "../core/schema/project.js";
+import { getNodeDeletionError } from "../core/services/edit-transcript-map.js";
 
 type SectionNodeData = {
   kind: "section";
@@ -62,7 +65,7 @@ type MapApiResponse =
 type ProjectsApiResponse =
   | {
       ok: true;
-      data: ProjectSummary[];
+      data: ProjectPage;
     }
   | {
       ok: false;
@@ -530,7 +533,8 @@ function TranscriptEvidencePanel({
   onRenameNode,
   onUpdateSummary,
   onUpdateType,
-  onDeleteNode
+  onDeleteNode,
+  deleteDisabledReason
 }: {
   node: TranscriptMapNode | null;
   thesisNodeId: string;
@@ -538,6 +542,7 @@ function TranscriptEvidencePanel({
   onUpdateSummary: (value: string) => void;
   onUpdateType: (value: TranscriptMapNodeType) => void;
   onDeleteNode: () => void;
+  deleteDisabledReason: string | null;
 }): React.JSX.Element {
   if (!node) {
     return (
@@ -556,7 +561,7 @@ function TranscriptEvidencePanel({
     typeof node.transcriptSpan.startChar === "number" &&
     typeof node.transcriptSpan.endChar === "number";
   const editableTypes = getEditableNodeTypes(node, thesisNodeId);
-  const canDelete = node.id !== thesisNodeId;
+  const canDelete = !deleteDisabledReason;
 
   return (
     <aside className="evidence-panel">
@@ -622,13 +627,10 @@ function TranscriptEvidencePanel({
       </label>
 
       <div className="editor-actions">
-        {canDelete ? (
-          <button className="button-danger" type="button" onClick={onDeleteNode}>
-            Delete node
-          </button>
-        ) : (
-          <p className="editor-note">The thesis node stays locked in this first editing pass.</p>
-        )}
+        <button className="button-danger" type="button" onClick={onDeleteNode} disabled={!canDelete}>
+          Delete node
+        </button>
+        {deleteDisabledReason ? <p className="editor-note">{deleteDisabledReason}</p> : null}
       </div>
 
       <div className="evidence-fields">
@@ -760,6 +762,7 @@ function GraphView({
           onUpdateSummary={onUpdateSummary}
           onUpdateType={onUpdateType}
           onDeleteNode={onDeleteNode}
+          deleteDisabledReason={selectedNode ? getNodeDeletionError(map, selectedNode.id) : null}
         />
       </div>
     </>
@@ -771,17 +774,23 @@ function ProjectLibrary({
   activeProjectId,
   isLoadingProjects,
   openingProjectId,
+  nextCursor,
+  isLoadingMore,
   persistenceUnavailableReason,
   projectsError,
-  onOpenProject
+  onOpenProject,
+  onLoadMore
 }: {
   projects: ProjectSummary[];
   activeProjectId: string | null;
   isLoadingProjects: boolean;
   openingProjectId: string | null;
+  nextCursor: string | null;
+  isLoadingMore: boolean;
   persistenceUnavailableReason: string;
   projectsError: string;
   onOpenProject: (projectId: string) => void;
+  onLoadMore: () => void;
 }): React.JSX.Element {
   return (
     <aside className="panel project-library">
@@ -793,19 +802,15 @@ function ProjectLibrary({
         </p>
       </div>
 
-      {persistenceUnavailableReason ? (
-        <p className="hint">{persistenceUnavailableReason}</p>
-      ) : projectsError ? (
-        <p className="error" role="alert">
-          {projectsError}
-        </p>
-      ) : projects.length === 0 ? (
+      {persistenceUnavailableReason ? <p className="hint">{persistenceUnavailableReason}</p> : null}
+      {projectsError ? <p className="error" role="alert">{projectsError}</p> : null}
+      {!persistenceUnavailableReason && !projectsError && projects.length === 0 ? (
         <p className="hint">
           {isLoadingProjects
             ? "Loading saved projects..."
             : "No saved projects yet. Save the first map that feels worth keeping."}
         </p>
-      ) : (
+      ) : projects.length > 0 ? (
         <ul className="project-list">
           {projects.map((project) => {
             const isActive = project.id === activeProjectId;
@@ -837,44 +842,76 @@ function ProjectLibrary({
             );
           })}
         </ul>
-      )}
+      ) : null}
+      {nextCursor && !persistenceUnavailableReason ? (
+        <button type="button" onClick={onLoadMore} disabled={isLoadingMore}>
+          {isLoadingMore ? "Loading more..." : "Load more projects"}
+        </button>
+      ) : null}
     </aside>
   );
 }
 
 function App(): React.JSX.Element {
+  const extractionController = useRef<AbortController | null>(null);
   const [transcript, setTranscript] = useState(starterTranscript);
   const [mapTranscript, setMapTranscript] = useState(starterTranscript);
   const [map, setMap] = useState<TranscriptMap | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [positionOverrides, setPositionOverrides] = useState<NodePositionOverrides>({});
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [activeProjectVersion, setActiveProjectVersion] = useState<number | null>(null);
+  const [saveConflict, setSaveConflict] = useState(false);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [nextProjectCursor, setNextProjectCursor] = useState<string | null>(null);
   const [projectsError, setProjectsError] = useState("");
   const [persistenceUnavailableReason, setPersistenceUnavailableReason] = useState("");
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [isLoadingMoreProjects, setIsLoadingMoreProjects] = useState(false);
   const [isSavingProject, setIsSavingProject] = useState(false);
   const [openingProjectId, setOpeningProjectId] = useState<string | null>(null);
 
   const selectedNode = map ? resolveSelectedNode(map, selectedNodeId) : null;
   const transcriptDraftChanged = map !== null && transcript.trim() !== mapTranscript.trim();
+  const saveValidation = map
+    ? projectSaveInputSchema.safeParse({
+        id: activeProjectId,
+        expectedVersion: activeProjectVersion,
+        transcript: mapTranscript,
+        map,
+        positionOverrides,
+        selectedNodeId
+      })
+    : null;
+  const saveValidationMessage = saveValidation && !saveValidation.success
+    ? `${saveValidation.error.issues[0]?.path.join(".") || "Project"}: ${
+        saveValidation.error.issues[0]?.message || "Project is invalid."
+      }`
+    : "";
 
   useEffect(() => {
     void loadProjects();
   }, []);
 
-  async function loadProjects(options?: { silent?: boolean }): Promise<void> {
-    if (!options?.silent) {
+  useEffect(() => () => extractionController.current?.abort(), []);
+
+  async function loadProjects(options?: { silent?: boolean; cursor?: string }): Promise<void> {
+    const append = options?.cursor !== undefined;
+    if (append) {
+      setIsLoadingMoreProjects(true);
+    } else if (!options?.silent) {
       setIsLoadingProjects(true);
     }
 
     setProjectsError("");
 
     try {
-      const response = await fetch("/api/projects");
+      const response = await fetch(append
+        ? `/api/projects?cursor=${encodeURIComponent(options.cursor ?? "")}`
+        : "/api/projects");
       const payload = (await response.json()) as ProjectsApiResponse;
 
       if (!response.ok || !payload.ok) {
@@ -885,7 +922,11 @@ function App(): React.JSX.Element {
         );
       }
 
-      setProjects(payload.data);
+      setProjects((current) => append
+        ? [...current, ...payload.data.items.filter((project) =>
+            !current.some((existing) => existing.id === project.id))]
+        : payload.data.items);
+      setNextProjectCursor(payload.data.nextCursor);
       setPersistenceUnavailableReason("");
     } catch (loadError: unknown) {
       const message =
@@ -894,11 +935,13 @@ function App(): React.JSX.Element {
       if (isPersistenceUnavailableError(message)) {
         setPersistenceUnavailableReason(message);
         setProjects([]);
+        setNextProjectCursor(null);
       } else {
         setProjectsError(message);
       }
     } finally {
       setIsLoadingProjects(false);
+      setIsLoadingMoreProjects(false);
     }
   }
 
@@ -908,6 +951,8 @@ function App(): React.JSX.Element {
     setPositionOverrides(project.positionOverrides);
     setSelectedNodeId(project.selectedNodeId ?? project.map.thesisNodeId);
     setActiveProjectId(project.id);
+    setActiveProjectVersion(project.version);
+    setSaveConflict(false);
     startTransition(() => {
       setMap(project.map);
     });
@@ -943,14 +988,18 @@ function App(): React.JSX.Element {
     }
   }
 
-  async function handleSaveProject(): Promise<void> {
+  async function handleSaveProject(asNew = false): Promise<void> {
     if (!map) {
+      return;
+    }
+    if (saveValidationMessage) {
+      setError(`Cannot save yet. ${saveValidationMessage}`);
       return;
     }
 
     setIsSavingProject(true);
     setError("");
-    setStatus(activeProjectId ? "Saving project updates..." : "Saving project...");
+    setStatus(activeProjectId && !asNew ? "Saving project updates..." : "Saving project...");
 
     try {
       const response = await fetch("/api/projects", {
@@ -959,7 +1008,8 @@ function App(): React.JSX.Element {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          id: activeProjectId,
+          id: asNew ? null : activeProjectId,
+          expectedVersion: asNew ? null : activeProjectVersion,
           transcript: mapTranscript,
           map,
           positionOverrides,
@@ -967,6 +1017,12 @@ function App(): React.JSX.Element {
         })
       });
       const payload = (await response.json()) as ProjectApiResponse;
+      if (response.status === 409) {
+        setSaveConflict(true);
+        setError("");
+        setStatus("");
+        return;
+      }
 
       if (!response.ok || !payload.ok) {
         throw new Error(
@@ -1004,6 +1060,11 @@ function App(): React.JSX.Element {
     if (!map || !selectedNode || selectedNode.id === map.thesisNodeId) {
       return;
     }
+    const deletionError = getNodeDeletionError(map, selectedNode.id);
+    if (deletionError) {
+      setError(deletionError);
+      return;
+    }
 
     const nextMap = deleteNodeFromMap(map, selectedNode.id);
     const { [selectedNode.id]: _, ...remainingPositionOverrides } = positionOverrides;
@@ -1025,6 +1086,8 @@ function App(): React.JSX.Element {
     setIsLoading(true);
     setError("");
     setStatus("Extracting structure from the transcript...");
+    const controller = new AbortController();
+    extractionController.current = controller;
 
     try {
       const response = await fetch("/api/transcript-map", {
@@ -1034,7 +1097,8 @@ function App(): React.JSX.Element {
         },
         body: JSON.stringify({
           transcript: normalizedTranscript
-        })
+        }),
+        signal: controller.signal
       });
 
       const payload = (await response.json()) as MapApiResponse;
@@ -1049,6 +1113,8 @@ function App(): React.JSX.Element {
 
       setStatus("Transcript graph extracted.");
       setActiveProjectId(null);
+      setActiveProjectVersion(null);
+      setSaveConflict(false);
       setMapTranscript(normalizedTranscript);
       setPositionOverrides({});
       setSelectedNodeId(payload.data.thesisNodeId);
@@ -1056,9 +1122,17 @@ function App(): React.JSX.Element {
         setMap(payload.data);
       });
     } catch (submitError: unknown) {
-      setError(submitError instanceof Error ? submitError.message : "Unexpected error.");
-      setStatus("");
+      if (controller.signal.aborted) {
+        setError("");
+        setStatus("Extraction cancelled.");
+      } else {
+        setError(submitError instanceof Error ? submitError.message : "Unexpected error.");
+        setStatus("");
+      }
     } finally {
+      if (extractionController.current === controller) {
+        extractionController.current = null;
+      }
       setIsLoading(false);
     }
   }
@@ -1109,6 +1183,17 @@ function App(): React.JSX.Element {
               <button id="submit-button" type="submit" disabled={isLoading}>
                 {isLoading ? "Building graph..." : "Build graph"}
               </button>
+              {isLoading ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    extractionController.current?.abort();
+                    setStatus("Cancelling extraction...");
+                  }}
+                >
+                  Cancel
+                </button>
+              ) : null}
               <p className="status" role="status" hidden={!status}>
                 {status}
               </p>
@@ -1124,9 +1209,16 @@ function App(): React.JSX.Element {
           activeProjectId={activeProjectId}
           isLoadingProjects={isLoadingProjects}
           openingProjectId={openingProjectId}
+          nextCursor={nextProjectCursor}
+          isLoadingMore={isLoadingMoreProjects}
           persistenceUnavailableReason={persistenceUnavailableReason}
           projectsError={projectsError}
           onOpenProject={handleOpenProject}
+          onLoadMore={() => {
+            if (nextProjectCursor) {
+              void loadProjects({ cursor: nextProjectCursor });
+            }
+          }}
         />
       </section>
 
@@ -1144,7 +1236,7 @@ function App(): React.JSX.Element {
                   onClick={() => {
                     void handleSaveProject();
                   }}
-                  disabled={isSavingProject || Boolean(persistenceUnavailableReason)}
+                  disabled={isSavingProject || saveConflict || Boolean(persistenceUnavailableReason) || Boolean(saveValidationMessage)}
                 >
                   {isSavingProject
                     ? "Saving..."
@@ -1155,6 +1247,22 @@ function App(): React.JSX.Element {
                 <span className="pill pill--muted">
                   {activeProjectId ? "Saved project" : "Unsaved session"}
                 </span>
+                {saveConflict && activeProjectId ? (
+                  <div className="editor-actions">
+                    <p className="error" role="alert">
+                      This project changed elsewhere. Your edits remain open. Reloading replaces these local edits.
+                    </p>
+                    <button type="button" disabled={isSavingProject || Boolean(saveValidationMessage)} onClick={() => {
+                      void handleSaveProject(true);
+                    }}>Save as new project</button>
+                    <button type="button" onClick={() => {
+                      void handleOpenProject(activeProjectId);
+                    }}>Reload saved project</button>
+                  </div>
+                ) : null}
+                {saveValidationMessage ? (
+                  <p className="error" role="alert">Fix before saving: {saveValidationMessage}</p>
+                ) : null}
               </div>
             </div>
             <div className="result-meta">

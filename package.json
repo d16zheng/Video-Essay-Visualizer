@@ -14,6 +14,8 @@
     "serve": "npm run build && node dist/server/index.js",
     "start": "node dist/server/index.js",
     "typecheck": "tsc --project tsconfig.json --noEmit",
+    "db:migrate": "node --import tsx src/server/migrate.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
     "extract": "tsx src/cli.ts"
   },
   "dependencies": {

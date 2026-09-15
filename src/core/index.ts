@@ -22,6 +22,7 @@ export {
   parseProjectSaveInput,
   parseProjectSummary,
   parseSavedProject,
+  projectPageSchema,
   projectSaveInputSchema,
   projectSummarySchema,
   savedProjectSchema
@@ -31,6 +32,7 @@ export type {
   NodePositionOverrides,
   ProjectSaveInput,
   ProjectSummary,
+  ProjectPage,
   SavedProject
 } from "./schema/project.js";
 export {
@@ -55,3 +57,5 @@ export {
   extractTranscriptMap,
   type ExtractTranscriptMapInput
 } from "./services/extract-transcript-map.js";
+export { ExtractionFailure } from "./services/extraction-failure.js";
+export type { ExtractionFailureKind } from "./services/extraction-failure.js";

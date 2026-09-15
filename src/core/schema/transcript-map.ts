@@ -79,6 +79,23 @@ export const transcriptMapSchema = z
   .superRefine((value, ctx) => {
     const sectionIds = new Set(value.sections.map((section) => section.id));
     const nodesById = new Map(value.nodes.map((node) => [node.id, node]));
+    const addDuplicateIssues = (ids: string[], path: (string | number)[], label: string) => {
+      const seen = new Set<string>();
+      for (const [index, id] of ids.entries()) {
+        if (seen.has(id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Duplicate ${label} ID ${id}.`,
+            path: [...path, index]
+          });
+        }
+        seen.add(id);
+      }
+    };
+
+    addDuplicateIssues(value.sections.map((section) => section.id), ["sections"], "section");
+    addDuplicateIssues(value.nodes.map((node) => node.id), ["nodes"], "node");
+    addDuplicateIssues(value.edges.map((edge) => edge.id), ["edges"], "edge");
     const thesisCount = value.nodes.filter((node) => node.type === "thesis").length;
 
     if (thesisCount !== 1) {
@@ -126,8 +143,21 @@ export const transcriptMapSchema = z
       }
     }
 
-    for (const section of value.sections) {
+    const listedNodeIds = new Set<string>();
+    const nodeSectionById = new Map<string, string>();
+    for (const [sectionIndex, section] of value.sections.entries()) {
+      addDuplicateIssues(section.nodeIds, ["sections", sectionIndex, "nodeIds"], "section node");
       for (const nodeId of section.nodeIds) {
+        const previousSectionId = nodeSectionById.get(nodeId);
+        if (previousSectionId && previousSectionId !== section.id) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Node ${nodeId} is listed in more than one section.`,
+            path: ["sections", sectionIndex, "nodeIds"]
+          });
+        }
+        nodeSectionById.set(nodeId, section.id);
+        listedNodeIds.add(nodeId);
         const node = nodesById.get(nodeId);
         if (!node) {
           ctx.addIssue({
@@ -145,6 +175,16 @@ export const transcriptMapSchema = z
             path: ["sections"]
           });
         }
+      }
+    }
+
+    for (const node of value.nodes) {
+      if (!listedNodeIds.has(node.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Node ${node.id} is missing from its section's nodeIds.`,
+          path: ["sections"]
+        });
       }
     }
 

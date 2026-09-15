@@ -21,7 +21,7 @@ export function buildTranscriptMapSystemPrompt(): string {
     "Use thesis for the central argument or narrative spine, even when it is implied rather than explicitly stated.",
     "Use evidence for supporting facts or sourced support, example for illustrative cases or anecdotes, counterpoint for meaningful tension or alternative framing, and conclusion for the ending synthesis or payoff.",
     "Only include edges that are genuinely useful for understanding the structure.",
-    "The transcriptSpan.startChar and endChar fields are optional. Include them only if you are confident.",
+    "The transcriptSpan.startChar and endChar fields are optional. Include them only if you are confident. If included, use zero-based offsets on the trimmed transcript with endChar exclusive, and make the selected text match the excerpt.",
     "The output must follow this JSON schema exactly:",
     JSON.stringify(transcriptMapJsonSchema)
   ].join("\n");

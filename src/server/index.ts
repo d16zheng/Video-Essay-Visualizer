@@ -6,6 +6,10 @@ import { timingSafeEqual } from "node:crypto";
 import { parseProjectSaveInput } from "../core/schema/project.js";
 import { extractTranscriptMap } from "../core/services/extract-transcript-map.js";
 import { ProjectStore } from "./project-store.js";
+import { toProjectSaveApiError } from "./project-errors.js";
+import { InvalidProjectListQuery, parseProjectListQuery } from "./project-pagination.js";
+import { ExtractionFailure } from "../core/services/extraction-failure.js";
+import { toTranscriptApiError } from "./transcript-errors.js";
 import { renderAppPage } from "../web/page.js";
 
 try {
@@ -201,15 +205,17 @@ async function readRequestBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = "";
     let bodySize = 0;
+    let tooLarge = false;
 
     request.setEncoding("utf8");
 
     request.on("data", (chunk: string) => {
       bodySize += Buffer.byteLength(chunk);
 
-      if (bodySize > maxBodySizeBytes) {
+      if (bodySize > maxBodySizeBytes && !tooLarge) {
+        tooLarge = true;
         reject(new HttpError(413, "Transcript is too large for this first-pass endpoint."));
-        request.destroy();
+        request.pause();
         return;
       }
 
@@ -222,6 +228,9 @@ async function readRequestBody(request: IncomingMessage): Promise<string> {
 
     request.on("error", (error) => {
       reject(error);
+    });
+    request.on("aborted", () => {
+      reject(new ExtractionFailure("cancelled", "Client disconnected while sending the transcript."));
     });
   });
 }
@@ -277,23 +286,64 @@ async function handleTranscriptMap(
   request: IncomingMessage,
   response: ServerResponse
 ): Promise<void> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const onDisconnected = () => controller.abort();
+  request.on("aborted", onDisconnected);
+  response.on("close", onDisconnected);
+  if (request.aborted || response.destroyed) {
+    controller.abort();
+  }
+  let statusCode = 200;
+  let failure: unknown;
+
   try {
     const transcript = await parseTranscriptRequest(request);
-    const transcriptMap = await extractTranscriptMap({ transcript });
+    const transcriptMap = await extractTranscriptMap({ transcript, signal: controller.signal });
 
-    sendJson(response, 200, {
-      ok: true,
-      data: transcriptMap
-    });
+    if (!response.destroyed) {
+      sendJson(response, 200, {
+        ok: true,
+        data: transcriptMap
+      }, { "Server-Timing": `extraction;dur=${Date.now() - startedAt}` });
+    }
   } catch (error: unknown) {
-    const statusCode = error instanceof HttpError ? error.statusCode : 500;
-    const message =
-      error instanceof Error ? error.message : "Unexpected server error while building transcript graph.";
-
-    sendJson(response, statusCode, {
-      ok: false,
-      error: message
-    });
+    failure = error;
+    const apiError = error instanceof HttpError
+      ? { statusCode: error.statusCode, code: "invalid_request", message: error.message }
+      : toTranscriptApiError(error);
+    statusCode = apiError.statusCode;
+    if (!response.destroyed) {
+      sendJson(response, statusCode, {
+        ok: false,
+        code: apiError.code,
+        error: apiError.message
+      }, {
+        "Server-Timing": `extraction;dur=${Date.now() - startedAt}`,
+        ...(statusCode === 413 ? { Connection: "close" } : {})
+      });
+    }
+  } finally {
+    request.removeListener("aborted", onDisconnected);
+    response.removeListener("close", onDisconnected);
+    const extractionFailure = failure instanceof ExtractionFailure ? failure : null;
+    console.info(JSON.stringify({
+      event: "transcript_extraction",
+      outcome: response.destroyed && !response.writableEnded ? "client_disconnected" : statusCode < 400 ? "success" : "failure",
+      statusCode,
+      durationMs: Date.now() - startedAt,
+      ...(extractionFailure ? {
+        kind: extractionFailure.kind,
+        reason: extractionFailure.message,
+        attempts: extractionFailure.attempts,
+        ...(extractionFailure.cause instanceof Error
+          ? { causeType: extractionFailure.cause.name }
+          : {}),
+        ...(extractionFailure.upstreamStatus !== undefined
+          ? { upstreamStatus: extractionFailure.upstreamStatus }
+          : {})
+      } : {})
+    }));
   }
 }
 
@@ -309,21 +359,22 @@ function ensurePersistenceEnabled(response: ServerResponse): boolean {
   return false;
 }
 
-async function handleListProjects(response: ServerResponse): Promise<void> {
+async function handleListProjects(response: ServerResponse, params: URLSearchParams): Promise<void> {
   if (!ensurePersistenceEnabled(response)) {
     return;
   }
 
   try {
-    const projects = await projectStore.listProjects();
+    const options = parseProjectListQuery(params);
+    const projects = await projectStore.listProjects(options);
     sendJson(response, 200, {
       ok: true,
       data: projects
     });
   } catch (error: unknown) {
-    sendJson(response, 500, {
+    sendJson(response, error instanceof InvalidProjectListQuery ? 400 : 500, {
       ok: false,
-      error: error instanceof Error ? error.message : "Unable to list projects."
+      error: error instanceof InvalidProjectListQuery ? error.message : "Unable to list projects."
     });
   }
 }
@@ -373,12 +424,14 @@ async function handleSaveProject(
       data: project
     });
   } catch (error: unknown) {
-    const statusCode = error instanceof HttpError ? error.statusCode : 500;
-    const message = error instanceof Error ? error.message : "Unable to save project.";
+    const apiError = error instanceof HttpError
+      ? { statusCode: error.statusCode, code: "invalid_project", message: error.message }
+      : toProjectSaveApiError(error);
 
-    sendJson(response, statusCode, {
+    sendJson(response, apiError.statusCode, {
       ok: false,
-      error: message
+      code: apiError.code,
+      error: apiError.message
     });
   }
 }
@@ -415,7 +468,7 @@ async function routeRequest(
   }
 
   if (method === "GET" && url.pathname === "/api/projects") {
-    await handleListProjects(response);
+    await handleListProjects(response, url.searchParams);
     return;
   }
 
@@ -454,7 +507,15 @@ async function routeRequest(
 }
 
 const server = createServer((request, response) => {
-  void routeRequest(request, response);
+  void routeRequest(request, response).catch((error: unknown) => {
+    console.error(JSON.stringify({
+      event: "unhandled_route_error",
+      errorType: error instanceof Error ? error.name : typeof error
+    }));
+    if (!response.destroyed) {
+      sendJson(response, 500, { ok: false, error: "Unable to process request." });
+    }
+  });
 });
 
 server.listen(port, host, () => {

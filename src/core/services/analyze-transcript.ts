@@ -13,6 +13,9 @@ import {
   transcriptMapJsonSchema
 } from "../schema/transcript-map.js";
 import { parseJsonResponse } from "../utils/json.js";
+import { assertTranscriptMapGrounded } from "../schema/transcript-grounding.js";
+import { ExtractionFailure } from "./extraction-failure.js";
+import { sendOpenAiRequest } from "./openai-request.js";
 
 export const transcriptAnalysisStageNames = [
   "normalize_input",
@@ -31,6 +34,9 @@ export type AnalyzeTranscriptInput = {
   title?: string;
   apiKey?: string;
   model?: string;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  maxAttempts?: number;
   onStage?: (stage: TranscriptAnalysisStageRecord) => void | Promise<void>;
 };
 
@@ -171,13 +177,6 @@ async function runStage<T>({
   return result;
 }
 
-function getOpenAiErrorMessage(
-  payload: OpenAiResponsePayload | undefined,
-  fallback: string
-): string {
-  return payload?.error?.message?.trim() || fallback;
-}
-
 function extractOpenAiOutputText(payload: OpenAiResponsePayload): string | undefined {
   for (const outputItem of payload.output ?? []) {
     if (outputItem.type !== "message") {
@@ -190,7 +189,7 @@ function extractOpenAiOutputText(payload: OpenAiResponsePayload): string | undef
       }
 
       if (contentItem.type === "refusal" && contentItem.refusal?.trim()) {
-        throw new Error(`OpenAI refused the request: ${contentItem.refusal}`);
+        throw new ExtractionFailure("refusal", "OpenAI refused to analyze the transcript.");
       }
     }
   }
@@ -203,6 +202,9 @@ export async function analyzeTranscript({
   title,
   apiKey = process.env.OPENAI_API_KEY,
   model = process.env.OPENAI_MODEL ?? DEFAULT_OPENAI_MODEL,
+  signal,
+  timeoutMs,
+  maxAttempts,
   onStage
 }: AnalyzeTranscriptInput): Promise<TranscriptAnalysisResult> {
   const pipelineStartedAtMs = Date.now();
@@ -215,7 +217,7 @@ export async function analyzeTranscript({
     onStage,
     execute: async (): Promise<NormalizedTranscriptInput> => {
       if (!apiKey) {
-        throw new Error(
+        throw new ExtractionFailure("configuration",
           "Missing OpenAI API key. Set OPENAI_API_KEY in your environment or pass apiKey explicitly."
         );
       }
@@ -223,7 +225,7 @@ export async function analyzeTranscript({
       const normalizedTranscript = transcript.trim();
 
       if (!normalizedTranscript) {
-        throw new Error("Transcript cannot be empty.");
+        throw new ExtractionFailure("invalid_input", "Transcript cannot be empty.");
       }
 
       const normalizedTitle = title?.trim() || undefined;
@@ -280,12 +282,8 @@ export async function analyzeTranscript({
     stages,
     onStage,
     execute: async (): Promise<TranscriptAnalysisResponse> => {
-      const apiResponse = await fetch("https://api.openai.com/v1/responses", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${normalizedInput.apiKey}`,
-          "Content-Type": "application/json"
-        },
+      const rawApiResponse = await sendOpenAiRequest({
+        apiKey: normalizedInput.apiKey,
         body: JSON.stringify({
           model: normalizedInput.model,
           input: [
@@ -299,44 +297,23 @@ export async function analyzeTranscript({
             }
           ],
           text: prompts.text
-        })
+        }),
+        ...(signal ? { signal } : {}),
+        ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+        ...(maxAttempts !== undefined ? { maxAttempts } : {})
       });
-
-      const rawApiResponse = await apiResponse.text();
       let completion: OpenAiResponsePayload | undefined;
 
       try {
         completion = JSON.parse(rawApiResponse) as OpenAiResponsePayload;
       } catch {
-        if (!apiResponse.ok) {
-          throw new Error(
-            `OpenAI request failed with status ${apiResponse.status}: ${
-              rawApiResponse.trim() || apiResponse.statusText
-            }`
-          );
-        }
-
-        throw new Error("OpenAI returned a non-JSON response.");
-      }
-
-      if (!apiResponse.ok) {
-        throw new Error(
-          getOpenAiErrorMessage(
-            completion,
-            `OpenAI request failed with status ${apiResponse.status}.`
-          )
-        );
+        throw new ExtractionFailure("invalid_response", "OpenAI returned a non-JSON response.");
       }
 
       const rawContent = extractOpenAiOutputText(completion);
 
       if (!rawContent) {
-        const incompleteReason = completion.incomplete_details?.reason;
-        throw new Error(
-          incompleteReason
-            ? `OpenAI returned no text output (${incompleteReason}).`
-            : "OpenAI returned an empty response."
-        );
+        throw new ExtractionFailure("invalid_response", "OpenAI returned no text output.");
       }
 
       return { rawContent };
@@ -348,7 +325,13 @@ export async function analyzeTranscript({
     summary: "Parse the model payload into a JSON value.",
     stages,
     onStage,
-    execute: async (): Promise<unknown> => parseJsonResponse(response.rawContent)
+    execute: async (): Promise<unknown> => {
+      try {
+        return parseJsonResponse(response.rawContent);
+      } catch (error: unknown) {
+        throw new ExtractionFailure("invalid_output", "OpenAI output was not valid JSON.", { cause: error });
+      }
+    }
   });
 
   const validatedMap = await runStage({
@@ -356,22 +339,36 @@ export async function analyzeTranscript({
     summary: "Validate the structured response against the transcript graph schema and invariants.",
     stages,
     onStage,
-    execute: async (): Promise<TranscriptMap> => parseTranscriptMap(parsedResponse)
+    execute: async (): Promise<TranscriptMap> => {
+      try {
+        return parseTranscriptMap(parsedResponse);
+      } catch (error: unknown) {
+        throw new ExtractionFailure("invalid_output", "OpenAI output did not match the transcript graph schema.", { cause: error });
+      }
+    }
   });
 
   const map = await runStage({
     name: "finalize_result",
-    summary: "Normalize final metadata so downstream consumers receive a stable transcript map contract.",
+    summary: "Normalize final metadata and verify node excerpts against the input transcript.",
     stages,
     onStage,
-    execute: async (): Promise<TranscriptMap> => ({
-      ...validatedMap,
-      version: TRANSCRIPT_MAP_SCHEMA_VERSION,
-      source: {
-        ...validatedMap.source,
-        transcriptLengthChars: normalizedInput.inputProfile.transcriptLengthChars
+    execute: async (): Promise<TranscriptMap> => {
+      const finalizedMap: TranscriptMap = {
+        ...validatedMap,
+        version: TRANSCRIPT_MAP_SCHEMA_VERSION,
+        source: {
+          ...validatedMap.source,
+          transcriptLengthChars: normalizedInput.inputProfile.transcriptLengthChars
+        }
+      };
+      try {
+        assertTranscriptMapGrounded(finalizedMap, normalizedInput.normalizedTranscript);
+      } catch (error: unknown) {
+        throw new ExtractionFailure("invalid_output", "OpenAI output was not grounded in the transcript.", { cause: error });
       }
-    })
+      return finalizedMap;
+    }
   });
 
   return {
