@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "^24.0.0"
+  },
   "description": "Schema-first MVP for turning written transcripts into structured story graphs.",
   "scripts": {
     "clean": "node --eval \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
@@ -14,7 +17,9 @@
     "serve": "npm run build && node dist/server/index.js",
     "start": "node dist/server/index.js",
     "typecheck": "tsc --project tsconfig.json --noEmit",
-    "db:migrate": "node --import tsx src/server/migrate.ts",
+    "db:migrate": "node dist/server/migrate.js",
+    "start:release": "npm run db:migrate && npm start",
+    "smoke:release": "node scripts/smoke-release.mjs",
     "test": "node --import tsx --test tests/*.test.ts",
     "extract": "tsx src/cli.ts"
   },

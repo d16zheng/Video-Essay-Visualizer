@@ -1,5 +1,5 @@
 import { type TranscriptMap } from "../schema/transcript-map.js";
-import { analyzeTranscript } from "./analyze-transcript.js";
+import { analyzeTranscript, type AnalyzeTranscriptInput } from "./analyze-transcript.js";
 
 export type ExtractTranscriptMapInput = {
   transcript: string;
@@ -9,6 +9,7 @@ export type ExtractTranscriptMapInput = {
   signal?: AbortSignal;
   timeoutMs?: number;
   maxAttempts?: number;
+  onStage?: AnalyzeTranscriptInput["onStage"];
 };
 
 export async function extractTranscriptMap({
@@ -18,7 +19,8 @@ export async function extractTranscriptMap({
   model,
   signal,
   timeoutMs,
-  maxAttempts
+  maxAttempts,
+  onStage
 }: ExtractTranscriptMapInput): Promise<TranscriptMap> {
   const result = await analyzeTranscript({
     transcript,
@@ -27,7 +29,8 @@ export async function extractTranscriptMap({
     ...(model ? { model } : {}),
     ...(signal ? { signal } : {}),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-    ...(maxAttempts !== undefined ? { maxAttempts } : {})
+    ...(maxAttempts !== undefined ? { maxAttempts } : {}),
+    ...(onStage ? { onStage } : {})
   });
 
   return result.map;

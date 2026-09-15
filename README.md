@@ -20,19 +20,19 @@ This project uses OpenAI structured output to extract:
 
 ## Setup
 
-1. Install dependencies:
+Use Node 24 (the supported runtime is pinned in `.node-version`). Install dependencies:
 
 ```bash
-npm install
+npm ci
 ```
 
-2. Create your env file:
+Create your env file:
 
 ```bash
 cp .env.example .env
 ```
 
-3. Add your API key:
+Add your API key:
 
 ```bash
 OPENAI_API_KEY=your_key_here
@@ -55,11 +55,11 @@ Notes:
   temporary network failures get at most one retry. Set `OPENAI_REQUEST_TIMEOUT_MS` and
   `OPENAI_MAX_ATTEMPTS` to change those limits; attempts are capped at three.
 - The extraction endpoint returns stable error codes and a `Server-Timing` duration header.
-  Server logs include outcome and duration, plus failure attempt count and upstream status when
-  available, without transcript text.
+  Server logs include outcome and duration, plus failure kind, attempt count, upstream status,
+  and completed stage timings when available, without transcript text.
 - ChatGPT subscriptions do not include API billing.
 - If `DATABASE_URL` is missing, extraction still works but save/load endpoints are unavailable.
-- If `DATABASE_URL` is set, run `npm run db:migrate` before starting the app. Existing
+- If `DATABASE_URL` is set, build and then run `npm run db:migrate` before starting the app. Existing
   `transcript_projects` rows are preserved and receive version 1. Startup checks the migration
   state instead of changing the schema.
 
@@ -76,7 +76,8 @@ Then open [http://127.0.0.1:3000](http://127.0.0.1:3000).
 Production-style run:
 
 ```bash
-npm run serve
+npm run build
+npm run start:release # requires DATABASE_URL
 ```
 
 CLI extraction:
@@ -93,7 +94,8 @@ npm run extract -- ./transcript.txt
 npm run typecheck
 npm test
 npm run build
-npm run db:migrate # only when DATABASE_URL is configured
+npm run db:migrate # after build, when DATABASE_URL is configured
+npm run start:release # migrate and start the built app
 npm run serve
 ```
 
@@ -131,6 +133,30 @@ and keeps its local edits; it can reload the latest saved project or save those 
 project. The project library loads 20 projects at a time with a stable cursor and a maximum
 page size of 50. PostgreSQL integration tests use an isolated schema when `TEST_DATABASE_URL`
 is set.
+
+## CI and deployment
+
+Pull requests and pushes to `main` run typechecking, tests, a production build, and a release
+smoke check. CI starts a disposable PostgreSQL service, so the persistence integration tests
+run instead of skipping. The smoke check verifies the built app with production-only
+dependencies; it does not call the OpenAI API. Without `DATABASE_URL`, it checks that
+persistence is unavailable; for a full local check, use a disposable database after building
+and migrating.
+
+For a hosted release, use the build and start commands, environment variables, and verification
+steps in [the deployment guide](docs/deployment.md). The app needs one Node service and a
+PostgreSQL database to demonstrate saved projects.
+
+## Operational logs
+
+The server writes one JSON `http_request` record per completed or disconnected request and
+returns its generated ID in `X-Request-ID`. Records contain a route template, status, outcome,
+and duration. Extraction and project database operations write separate records with the same
+ID, so failures can be traced without logging request bodies, transcripts, prompts, SQL
+parameters, credentials, raw errors, or full URLs. Database records include operation duration
+and a PostgreSQL error code when one is available. The host's stdout logs are sufficient for
+this small deployment; compare extraction latency and timeout counts before adding background
+jobs or other scaling infrastructure.
 
 ## Limitations
 
