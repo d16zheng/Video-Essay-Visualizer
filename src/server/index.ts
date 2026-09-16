@@ -305,6 +305,7 @@ async function handleTranscriptMap(
   const startedAt = Date.now();
   const stages: StageDuration[] = [];
   let transcriptLengthChars: number | undefined;
+  let attempts = 0;
   const controller = new AbortController();
   const onDisconnected = () => controller.abort();
   request.on("aborted", onDisconnected);
@@ -321,6 +322,7 @@ async function handleTranscriptMap(
     const transcriptMap = await extractTranscriptMap({
       transcript,
       signal: controller.signal,
+      onAttempt: (attempt) => { attempts = attempt; },
       onStage: ({ name, durationMs }) => { stages.push({ name, durationMs }); }
     });
 
@@ -362,7 +364,7 @@ async function handleTranscriptMap(
       stages,
       ...(transcriptLengthChars !== undefined ? { transcriptLengthChars } : {}),
       ...(failureKind ? { failureKind } : {}),
-      ...(extractionFailure ? { attempts: extractionFailure.attempts } : {}),
+      attempts: Math.max(attempts, extractionFailure?.attempts ?? 0),
       ...(extractionFailure?.upstreamStatus !== undefined
         ? { upstreamStatus: extractionFailure.upstreamStatus }
         : {})
@@ -536,7 +538,8 @@ async function routeRequest(
   }
 
   if (method === "GET" && url.pathname === "/health") {
-    sendJson(response, 200, { ok: true });
+    const healthy = await projectStore.checkHealth();
+    sendJson(response, healthy ? 200 : 503, { ok: healthy });
     return;
   }
 

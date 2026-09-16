@@ -26,8 +26,10 @@ function abortedFetch(signal: AbortSignal): Promise<Response> {
 
 test("transient HTTP and network failures retry, then return a successful response", async () => {
   let calls = 0;
+  const attempts: number[] = [];
   const httpText = await sendOpenAiRequest({
     ...baseRequest,
+    onAttempt: (attempt) => attempts.push(attempt),
     fetchImpl: async () => {
       calls += 1;
       return calls === 1
@@ -37,6 +39,7 @@ test("transient HTTP and network failures retry, then return a successful respon
   });
   assert.equal(httpText, "complete");
   assert.equal(calls, 2);
+  assert.deepEqual(attempts, [1, 2]);
 
   calls = 0;
   const networkText = await sendOpenAiRequest({
@@ -115,10 +118,12 @@ test("retry limit and permanent HTTP failures preserve status without leaking up
 
 test("timeout aborts an in-flight request and does not retry it", async () => {
   let calls = 0;
+  const attempts: number[] = [];
   await assert.rejects(
     sendOpenAiRequest({
       ...baseRequest,
       timeoutMs: 10,
+      onAttempt: (attempt) => attempts.push(attempt),
       fetchImpl: async (_, init) => {
         calls += 1;
         return abortedFetch(init?.signal as AbortSignal);
@@ -128,6 +133,7 @@ test("timeout aborts an in-flight request and does not retry it", async () => {
       error.kind === "timeout" && error.attempts === 1
   );
   assert.equal(calls, 1);
+  assert.deepEqual(attempts, [1]);
 });
 
 test("caller cancellation aborts an in-flight request and retry delay", async () => {
@@ -157,7 +163,8 @@ test("caller cancellation aborts an in-flight request and retry delay", async ()
     }
   });
   setTimeout(() => backoffController.abort(), 5);
-  await assert.rejects(duringBackoff, (error: unknown) => error instanceof ExtractionFailure && error.kind === "cancelled");
+  await assert.rejects(duringBackoff, (error: unknown) => error instanceof ExtractionFailure &&
+    error.kind === "cancelled" && error.attempts === 1);
   assert.equal(calls, 1);
 });
 

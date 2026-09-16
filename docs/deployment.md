@@ -4,6 +4,37 @@ The app runs as one Node service backed by PostgreSQL. Use a host that runs Node
 the repository root as its working directory, because migrations are read from
 `db/migrations/*.sql` at startup time.
 
+## Render release
+
+The repository includes `render.yaml` for one Render web service that serves both the React
+frontend and Node API, plus a PostgreSQL database. After signing in to Render, create a new
+Blueprint from the GitHub repository and choose `main`. Render prompts for
+`OPENAI_API_KEY`, `BASIC_AUTH_USERNAME`, and `BASIC_AUTH_PASSWORD` during the initial Blueprint
+setup. Enter real values in that prompt; never put them in Git. The Blueprint pins Node 24 via
+`.node-version`, binds all interfaces, connects to the database over Render's private network,
+and checks `/health` before routing traffic to a new deploy.
+
+The Blueprint uses Render's free web and PostgreSQL plans for an initial live verification.
+The free PostgreSQL database expires after 30 days and has no backups, so upgrade the database
+before storing work that must be retained. Render may spin down a free web service after idle
+time; allow for a cold start on the first health request.
+
+Once Render shows a successful deploy, set `DEPLOYED_URL` to its HTTPS `onrender.com` URL and
+run the production smoke test with the same Basic Auth credentials. It makes a real OpenAI
+extraction, saves and reopens a sample project, and checks a stale-save conflict:
+
+```bash
+DEPLOYED_URL=https://your-service.onrender.com \
+BASIC_AUTH_USERNAME=your-username \
+BASIC_AUTH_PASSWORD=your-password \
+npm run smoke:deployed
+```
+
+The command prints the extraction's `X-Request-ID`. Find the matching
+`transcript_extraction` JSON record in Render's service logs and confirm its `durationMs`,
+`attempts`, `outcome`, and (on a failure) `failureKind`. Record the deployed URL and smoke
+result in the release notes before describing the application as live.
+
 ## Service configuration
 
 Build command:

@@ -13,6 +13,7 @@ export type OpenAiRequestOptions = {
   // Allows focused tests to avoid real retry delays.
   retryBaseDelayMs?: number;
   fetchImpl?: typeof fetch;
+  onAttempt?: (attempt: number) => void;
 };
 
 function readPolicyValue(value: number | undefined, envValue: string | undefined, fallback: number): number {
@@ -59,9 +60,9 @@ function retryAfterMs(value: string | null): number | null {
   return Number.isFinite(delay) && delay >= 0 ? delay : null;
 }
 
-function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
+function waitForRetry(delayMs: number, attempt: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) {
-    return Promise.reject(new ExtractionFailure("cancelled", "Extraction was cancelled."));
+    return Promise.reject(new ExtractionFailure("cancelled", "Extraction was cancelled.", { attempts: attempt }));
   }
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -71,7 +72,7 @@ function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
     const onAbort = () => {
       clearTimeout(timer);
       signal?.removeEventListener("abort", onAbort);
-      reject(new ExtractionFailure("cancelled", "Extraction was cancelled."));
+      reject(new ExtractionFailure("cancelled", "Extraction was cancelled.", { attempts: attempt }));
     };
     signal?.addEventListener("abort", onAbort, { once: true });
   });
@@ -161,6 +162,7 @@ export async function sendOpenAiRequest(options: OpenAiRequestOptions): Promise<
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let result: AttemptResult;
     try {
+      options.onAttempt?.(attempt);
       result = await performAttempt(options, timeoutMs, attempt);
     } catch (error: unknown) {
       if (
@@ -170,6 +172,7 @@ export async function sendOpenAiRequest(options: OpenAiRequestOptions): Promise<
       ) {
         await waitForRetry(
           Math.min(retryBaseDelayMs * 2 ** (attempt - 1), maxRetryDelayMs),
+          attempt,
           options.signal
         );
         continue;
@@ -192,7 +195,7 @@ export async function sendOpenAiRequest(options: OpenAiRequestOptions): Promise<
           { attempts: attempt, upstreamStatus: result.status }
         );
       }
-      await waitForRetry(Math.min(Math.max(backoff, requestedDelay ?? 0), maxRetryDelayMs), options.signal);
+      await waitForRetry(Math.min(Math.max(backoff, requestedDelay ?? 0), maxRetryDelayMs), attempt, options.signal);
       continue;
     }
     throw new ExtractionFailure(

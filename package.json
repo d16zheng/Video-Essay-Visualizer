@@ -20,6 +20,8 @@
     "db:migrate": "node dist/server/migrate.js",
     "start:release": "npm run db:migrate && npm start",
     "smoke:release": "node scripts/smoke-release.mjs",
+    "smoke:deployed": "node scripts/smoke-deployed.mjs",
+    "verify:live-extraction": "node scripts/verify-live-extraction.mjs",
     "test": "node --import tsx --test tests/*.test.ts",
     "extract": "tsx src/cli.ts"
   },

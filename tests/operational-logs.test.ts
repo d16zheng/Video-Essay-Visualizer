@@ -87,10 +87,27 @@ test("failure logs carry safe model and database details without sensitive messa
     "transcript_extraction", "database_operation", "http_request"
   ]);
   assert.equal(records[0]?.requestId, context.requestId);
+  assert.equal(records[0]?.durationMs, 123);
+  assert.equal(records[0]?.attempts, 2);
+  assert.equal(records[0]?.failureKind, "invalid_output");
   assert.deepEqual(records[0]?.stages, [{ name: "call_model", durationMs: 100 }]);
   assert.equal(records[1]?.postgresCode, "28P01");
   assert.equal(records[2]?.outcome, "failure");
   assert.doesNotMatch(JSON.stringify(records), /private-transcript|private-prompt|private-password|secret/u);
+});
+
+test("successful extraction logs include request ID, duration, and attempt count", () => {
+  const request = new FakeRequest();
+  request.method = "POST";
+  request.url = "/api/transcript-map";
+  const response = new FakeResponse();
+  const { context, records } = observedRequest(request, response);
+  logExtraction(context, {
+    outcome: "success", statusCode: 200, durationMs: 40, stages: [], attempts: 2
+  });
+  assert.equal(records[0]?.requestId, context.requestId);
+  assert.equal(records[0]?.durationMs, 40);
+  assert.equal(records[0]?.attempts, 2);
 });
 
 test("aborted requests produce one client-disconnected completion log", () => {

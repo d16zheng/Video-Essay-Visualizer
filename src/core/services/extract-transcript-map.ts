@@ -9,6 +9,7 @@ export type ExtractTranscriptMapInput = {
   signal?: AbortSignal;
   timeoutMs?: number;
   maxAttempts?: number;
+  onAttempt?: AnalyzeTranscriptInput["onAttempt"];
   onStage?: AnalyzeTranscriptInput["onStage"];
 };
 
@@ -20,6 +21,7 @@ export async function extractTranscriptMap({
   signal,
   timeoutMs,
   maxAttempts,
+  onAttempt,
   onStage
 }: ExtractTranscriptMapInput): Promise<TranscriptMap> {
   const result = await analyzeTranscript({
@@ -30,6 +32,7 @@ export async function extractTranscriptMap({
     ...(signal ? { signal } : {}),
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
     ...(maxAttempts !== undefined ? { maxAttempts } : {}),
+    ...(onAttempt ? { onAttempt } : {}),
     ...(onStage ? { onStage } : {})
   });
 

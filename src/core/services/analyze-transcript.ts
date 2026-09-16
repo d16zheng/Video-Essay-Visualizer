@@ -37,6 +37,7 @@ export type AnalyzeTranscriptInput = {
   signal?: AbortSignal;
   timeoutMs?: number;
   maxAttempts?: number;
+  onAttempt?: (attempt: number) => void;
   onStage?: (stage: TranscriptAnalysisStageRecord) => void | Promise<void>;
 };
 
@@ -205,6 +206,7 @@ export async function analyzeTranscript({
   signal,
   timeoutMs,
   maxAttempts,
+  onAttempt,
   onStage
 }: AnalyzeTranscriptInput): Promise<TranscriptAnalysisResult> {
   const pipelineStartedAtMs = Date.now();
@@ -300,7 +302,8 @@ export async function analyzeTranscript({
         }),
         ...(signal ? { signal } : {}),
         ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-        ...(maxAttempts !== undefined ? { maxAttempts } : {})
+        ...(maxAttempts !== undefined ? { maxAttempts } : {}),
+        ...(onAttempt ? { onAttempt } : {})
       });
       let completion: OpenAiResponsePayload | undefined;
 

@@ -132,6 +132,18 @@ export class ProjectStore {
     }
   }
 
+  async checkHealth(): Promise<boolean> {
+    if (!this.#pool) {
+      return true;
+    }
+    try {
+      await this.#pool.query("select 1");
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async listProjects({ limit, cursor }: ProjectListOptions): Promise<ProjectPage> {
     const pool = this.#getPool();
     const where = cursor ? "where (updated_at, id) < ($1::timestamptz, $2::uuid)" : "";
